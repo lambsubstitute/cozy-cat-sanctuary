@@ -1,0 +1,27 @@
+import sys, base64
+from playwright.sync_api import sync_playwright
+html = sys.argv[1]
+with sync_playwright() as p:
+    b = p.chromium.launch(); pg = b.new_page(viewport={'width': 1280, 'height': 900})
+    pg.route("**/*", lambda r: r.abort() if r.request.url.startswith("http") else r.continue_())
+    errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.goto(f"file://{html}"); pg.wait_for_timeout(700)
+    print('cats at start:', pg.evaluate("cats.length"), 'creator open:', pg.evaluate("creator.open"))
+    pg.click('[data-count="2"]')
+    pg.fill('#creatorName', 'Bramble')
+    pg.click('[data-set="coat"][data-val="black"]'); pg.click('[data-set="pattern"][data-val="tuxedo"]'); pg.click('[data-set="eyes"][data-val="gold"]')
+    pg.click('[data-set="character"][data-val="grumpy"]'); pg.click('[data-set="voice"][data-val="deep"]'); pg.click('[data-set="age"][data-val="adult"]')
+    print('name kept after clicks:', pg.evaluate("creator.looks[0].name"))
+    pg.click('[data-next]')
+    pg.fill('#creatorName', 'Sprout')
+    pg.click('[data-set="coat"][data-val="ginger"]'); pg.click('[data-set="pattern"][data-val="tabby"]'); pg.click('[data-set="age"][data-val="kitten"]'); pg.click('[data-set="character"][data-val="playful"]')
+    pg.wait_for_timeout(300)
+    pg.screenshot(path='creator.png')
+    pg.keyboard.press('Enter') if False else pg.click('[data-next]')
+    pg.wait_for_timeout(500)
+    print('after finish:', pg.evaluate("[creator.open, cats.map(c => c.name + '|' + CAT_CONFIGS[c.id].breed + '|' + (c.small||1) + '|' + c.strayReaction), document.querySelectorAll('#catCards > div').length, diaryEntries.map(e => e.text)]"))
+    print('saved household:', pg.evaluate("JSON.parse(localStorage.getItem(SAVE_KEY)).household.map(h => h.name + ':' + h.look.coat + '/' + h.look.pattern)"))
+    pg.reload(); pg.wait_for_timeout(800)
+    print('after reload:', pg.evaluate("[creator.open, cats.map(c => c.name + ' ' + c.pal.base + ' ' + (c.small || 1))]"))
+    print(errs)
+    b.close()
