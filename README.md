@@ -30,6 +30,8 @@ It works on the GitHub Pages link above, or when you open `index.html` straight 
 
 The whole game is `index.html`: the HTML at the top, then one script holding the room, the cats and everything else, in clearly commented sections. Edit it, open it in a browser, and refresh.
 
+**The look is 16-bit** (think Super Nintendo): the room is a 320 × 190 pixel canvas, scaled up crisply. The **16-BIT ART** section holds the toolkit: hue-shifted shading ramps (shadows go cool and purple, highlights warm and golden), ordered dithering for gradients, wood, brick, velvet and carpet textures, and outlines. The parts of the room that don't move are painted once into an offscreen picture (`roomBackdrop`); everything that moves goes through `spriteFX`, which adds the light along the top, the shadow underneath and a dark outline as it's drawn, so every cat pose gets the same treatment without being redrawn by hand. Furniture keeps its exact positions, because the cats' routes depend on them.
+
 Libraries are loaded from CDNs: [Tailwind CSS](https://tailwindcss.com/) (play CDN) for the page styling, and the [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) and [VT323](https://fonts.google.com/specimen/VT323) fonts from Google Fonts.
 
 ## Tests

@@ -412,7 +412,7 @@
 
     <script>
         const canvas = document.getElementById('dioramaCanvas');
-        const ctx = canvas.getContext('2d');
+        let ctx = canvas.getContext('2d');          // (briefly swapped for a scratch canvas while a sprite is shaded: see spriteFX)
         ctx.imageSmoothingEnabled = false;
 
         const W = 320;
@@ -5094,6 +5094,10 @@
 
         // Draws any of the 3 cats in their current pose with distinct markings
         function drawPixelCat(c, cat, drawX, drawY) {
+            if (cat.surface === 'underSofa' || cat.surface === 'treeHouse' || cat.surface === 'box') drawPixelCatSprite(c, cat, drawX, drawY);
+            else spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9 });
+        }
+        function drawPixelCatSprite(c, cat, drawX, drawY) {
             c.save();
             const j = cat.nav && cat.nav.jump;
             if (j && j.crawl && j.phase === 'air') {          // squeezing under the sofa: the sofa hides the top half
@@ -5130,6 +5134,20 @@
             rect(x, y, w, h) { this.real.rect(...this.map(x, y, w, h)); },
             fillRect(x, y, w, h) { if (w > 0 && h > 0) this.real.fillRect(...this.map(x, y, w, h)); }
         };
+
+        // A little bitmap of a cat (or a bit of one): each character picks a colour from cols
+        function catMap(c, x0, y0, rows, cols) {
+            rows.forEach((row, j) => {
+                let i = 0;
+                while (i < row.length) {
+                    const ch = row[i];
+                    let k = i + 1;
+                    while (k < row.length && row[k] === ch) k++;
+                    if (cols[ch]) pxRect(c, x0 + i, y0 + j, k - i, 1, cols[ch]);
+                    i = k;
+                }
+            });
+        }
 
         function drawCatBody(c, cat) {
             c.save();
@@ -5382,20 +5400,29 @@
 
             } else if (pose === 'window_watch' || pose === 'watch_hole') {
                 // Sitting facing away towards the window, tail swishing (twitching like mad,
-                // with a little bottom shuffle, when there's a bird out there)
+                // with a little bottom shuffle, when there's a bird out there). Seen from behind:
+                // round head, ears pricked, narrow shoulders, broad haunches, tabby down the back.
                 const chatter = pose === 'window_watch' && birdPerched() && cat.surface === 'sill' && globalTick >= cat.birdBoredUntil;
                 if (chatter && Math.floor(t / 6) % 3 === 0) c.translate(1, 0);
-                pxRect(c, -5, -9, 10, 9, pal.base);
-                pxRect(c, -4, -14, 8, 6, pal.base);
-                // Ears perked up watching rain/stars/leaves
-                pxRect(c, -4, -16, 2, 2, pal.dark);
-                pxRect(c, 2, -16, 2, 2, pal.dark);
-                if (!cat.isTuxedo) {
-                    pxRect(c, -1, -13, 2, 2, pal.stripe);
-                    pxRect(c, -3, -8, 6, 1, pal.stripe);
-                    pxRect(c, -3, -6, 6, 1, pal.stripe);
-                    pxRect(c, -3, -4, 6, 1, pal.stripe);
-                } else {
+                catMap(c, -6, -16, [
+                    '..D......D..',
+                    '..DD....DD..',
+                    '..BBBBBBBB..',
+                    '.BBBSBBSBBB.',
+                    '.BBBBSSBBBB.',
+                    '.BBBBBBBBBB.',
+                    '..BBBBBBBB..',
+                    '..BBBSSBBB..',
+                    '.BBSBSSBSBB.',
+                    '.BSBBBBBBSB.',
+                    'BBBSBSSBSBBB',
+                    'BSBBBBBBBBSB',
+                    'BBSBBSSBBSBB',
+                    'BBBBBBBBBBBB',
+                    'BBBBBBBBBBBB',
+                    '.BBBBBBBBBB.'
+                ], { B: pal.base, D: pal.dark, S: cat.isTuxedo ? pal.base : pal.stripe });
+                if (cat.isTuxedo) {
                     // White paws peeking at bottom edge
                     pxRect(c, -4, -1, 2, 1, pal.paws);
                     pxRect(c, 2, -1, 2, 1, pal.paws);
@@ -5641,12 +5668,20 @@
             const cfg = CAT_CONFIGS[pt.cat];
             const pal = cfg.palette;
             const x = pt.x, y = pt.y;
-            // Picture nail and gilt frame
+            // Picture nail, a soft shadow on the wall, and a bevelled gilt frame
+            ctx.fillStyle = 'rgba(16, 8, 4, 0.32)';
+            ctx.fillRect(x + 1, y + PORTRAIT_H + 1, PORTRAIT_W, 1);
+            ctx.fillRect(x + PORTRAIT_W + 1, y + 1, 1, PORTRAIT_H + 1);
+            pxRect(ctx, x + 7, y - 3, 2, 1, '#6a4a30');                         // the cord
             pxRect(ctx, x + 7, y - 2, 2, 2, '#1e140f');
-            pxRect(ctx, x, y, PORTRAIT_W, PORTRAIT_H, '#7a4f24');
-            pxRect(ctx, x, y, PORTRAIT_W, 1, '#c9963b');
-            pxRect(ctx, x, y, 1, PORTRAIT_H, '#b07f34');
-            pxRect(ctx, x + 1, y + PORTRAIT_H - 1, PORTRAIT_W - 1, 1, '#4a2e14');
+            pxRect(ctx, x - 1, y - 1, PORTRAIT_W + 2, PORTRAIT_H + 2, '#3a2410');   // dark edge
+            pxRect(ctx, x, y, PORTRAIT_W, PORTRAIT_H, '#a8742c');
+            pxRect(ctx, x, y, PORTRAIT_W, 1, '#f3cf6a');
+            pxRect(ctx, x, y, 1, PORTRAIT_H, '#e0b34e');
+            pxRect(ctx, x + 1, y + 1, PORTRAIT_W - 2, 1, '#c8913a');
+            pxRect(ctx, x + PORTRAIT_W - 1, y + 1, 1, PORTRAIT_H - 1, '#6e4a1a');
+            pxRect(ctx, x + 1, y + PORTRAIT_H - 1, PORTRAIT_W - 1, 1, '#5a3a14');
+            [[x, y], [x + PORTRAIT_W - 1, y], [x, y + PORTRAIT_H - 1], [x + PORTRAIT_W - 1, y + PORTRAIT_H - 1]].forEach(([cx, cy]) => pxRect(ctx, cx, cy, 1, 1, '#fff0a8'));   // gilt corners
             pxRect(ctx, x + 1, y + 1, PORTRAIT_W - 2, PORTRAIT_H - 2, '#3b2412');
             // Canvas: 12 x 15, painted face-on
             const cx = x + 2, cy = y + 2;
@@ -5679,9 +5714,12 @@
             pxRect(ctx, cx + 2, cy + 6, 1, 1, '#ffffff');
             pxRect(ctx, cx + 7, cy + 6, 1, 1, '#ffffff');
             pxRect(ctx, cx + 5, cy + 9, 2, 1, pal.nose);
-            // Little brass name plate under the frame
-            pxRect(ctx, x + 5, y + PORTRAIT_H, 6, 2, '#d4a72c');
-            pxRect(ctx, x + 5, y + PORTRAIT_H + 1, 6, 1, '#a07a1c');
+            // A painted vignette, and a little brass name plate under the frame
+            ctx.fillStyle = 'rgba(20, 10, 6, 0.22)';
+            ctx.fillRect(cx, cy + 14, 12, 1); ctx.fillRect(cx + 11, cy, 1, 14);
+            pxRect(ctx, x + 4, y + PORTRAIT_H + 1, 8, 2, '#3a2410');
+            pxRect(ctx, x + 5, y + PORTRAIT_H + 1, 6, 1, '#f0c95a');
+            pxRect(ctx, x + 5, y + PORTRAIT_H + 2, 6, 1, '#a07a1c');
         }
 
         // ------------------------------------------------------------------
@@ -6809,7 +6847,7 @@
                 });
             }
             const pc = document.getElementById('namePortrait');
-            if (pc) drawCatFace(pc.getContext('2d'), k);
+            if (pc) drawCatFaceFX(pc.getContext('2d'), k);
             panel.classList.remove('hidden');
             panel.classList.add('flex');
             nameModalCat = k;
@@ -7134,13 +7172,48 @@
                 </div>`;
             box.querySelectorAll('canvas[data-face]').forEach(cv => {
                 const l = creator.looks[+cv.dataset.face];
-                drawCatFace(cv.getContext('2d'), { pal: lookPalette(l), isTuxedo: l.pattern === 'tuxedo' });
+                drawCatFaceFX(cv.getContext('2d'), { pal: lookPalette(l), isTuxedo: l.pattern === 'tuxedo' });
             });
             creator.previewKey = '';
             drawCreatorPreview();
         }
 
         // The live preview: the cat in its new coat, going through a few of its favourite poses
+        // A corner of the sitting room for the cat creator's preview: wallpaper,
+        // panelling and skirting, floorboards and the edge of the rug, in the 16-bit style
+        let creatorArt = null;
+        function creatorBackdrop() {
+            if (creatorArt) return creatorArt;
+            const P = painter(52, 36);
+            for (let y = 0; y < 12; y++) for (let x = 0; x < 52; x++) {
+                const b = x % 12;
+                P.set(x, y, b < 7 ? '#4c2f23' : b === 7 ? '#6a4636' : b === 11 ? '#4a2c21' : '#5a392b');
+            }
+            P.rect(0, 12, 52, 1, '#8a5e45'); P.rect(0, 13, 52, 1, '#6e4a37'); P.rect(0, 14, 52, 1, '#24150e');
+            woodFill(P, 0, 15, 52, 2, '#3e271d', 21, -0.12, 0.07, 8);
+            P.rect(0, 17, 52, 1, '#6a4634'); P.rect(0, 18, 52, 1, '#341f16'); P.rect(0, 19, 52, 1, '#1a0f0a');
+            const TONES = ['#6e4730', '#754d34', '#69432d', '#7a523a'];
+            for (let y0 = 20, r = 0; y0 < 36; y0 += 7, r++) {
+                const jx = (r * 19) % 30 + 4;
+                [[0, jx], [jx, 52]].forEach(([a, b], n) => {
+                    const base = TONES[(r + n * 2) % 4];
+                    woodFill(P, a, y0 + 1, b - a, 6, base, r * 5 + n, -0.13, 0.06, 7);
+                    P.rect(a, y0 + 1, b - a, 1, shade(base, 0.16));
+                    P.rect(a, y0, b - a, 1, '#3a2315');
+                    P.rect(a, y0, 1, 7, '#3a2315');
+                });
+            }
+            P.fade(0, 20, 52, 5, -0.32);
+            // the corner of the rug: red edge, gold guard, navy band, cream field
+            for (let y = 26; y < 36; y++) for (let x = 6; x < 52; x++) {
+                const e = Math.min(x - 6, y - 26);
+                P.set(x, y, e < 2 ? '#7c2d12' : e === 2 ? '#d8a64a' : e < 6 ? ((e === 4 && (x + y) % 6 < 2) ? '#fef3c7' : '#1e3a8a') : e === 6 ? '#b07a2a' : '#fef3c7');
+            }
+            for (let y = 27; y < 36; y += 2) { P.set(5, y, '#ecd9a8'); P.set(4, y, '#ecd9a8'); P.set(3, y, '#fff6dc'); }
+            creatorArt = P.toCanvas();
+            return creatorArt;
+        }
+
         function drawCreatorPreview() {
             const cv = document.getElementById('creatorPreview');
             if (!cv || creator.step !== 'cat') return;
@@ -7166,13 +7239,7 @@
             pc.animTick++;
             const g = cv.getContext('2d');
             g.imageSmoothingEnabled = false;
-            pxRect(g, 0, 0, 52, 36, '#4a3325');                        // the wall, with its planks
-            for (let x = 3; x < 52; x += 8) pxRect(g, x, 0, 1, 18, '#3d2a1e');
-            pxRect(g, 0, 17, 52, 2, '#2c1e16');                        // skirting board
-            pxRect(g, 0, 19, 52, 17, '#6e4730');                       // floorboards
-            for (let y = 25; y < 36; y += 6) pxRect(g, 0, y, 52, 1, '#4f311f');
-            pxRect(g, 6, 26, 40, 8, '#7c2d12');                        // a corner of the rug
-            pxRect(g, 7, 27, 38, 6, '#f6ebd8');
+            g.drawImage(creatorBackdrop(), 0, 0);                         // a little corner of the room
             drawPixelCat(g, pc, 26, 31);
         }
 
@@ -8199,6 +8266,9 @@
             pxRect(ctx, x - 4, y - 12, 9, 9, ink);               // outline with rounded corners
             pxRect(ctx, x - 5, y - 11, 11, 7, ink);
             pxRect(ctx, x - 4, y - 11, 9, 7, paper);
+            pxRect(ctx, x - 4, y - 5, 9, 1, '#eadfc4');          // shaded underneath, a glint at the top left
+            pxRect(ctx, x + 4, y - 10, 1, 5, '#eadfc4');
+            pxRect(ctx, x - 4, y - 11, 2, 1, '#ffffff');
             pxRect(ctx, x - 1, y - 3, 3, 1, ink);                // little tail
             pxRect(ctx, x, y - 4, 1, 1, paper);
             pxRect(ctx, x, y - 2, 1, 1, ink);
@@ -8426,6 +8496,239 @@
             });
         }
 
+        // ---------- The view outside, 16-bit style ----------
+        // The sky: a smooth gradient from the top of the window to the horizon, in bands
+        // dithered into one another (like the colour gradients on a Super Nintendo)
+        const skyCanvas = document.createElement('canvas');
+        skyCanvas.width = 74; skyCanvas.height = 74;
+        const skyG = skyCanvas.getContext('2d');
+        const skyImg = skyG.createImageData(74, 74);
+        let skyKey = '';
+        function drawSkyGradient(x, y, w, h, top, bot) {
+            const key = top + bot;
+            if (key !== skyKey) {
+                skyKey = key;
+                const a = rgbOf(top), b = rgbOf(bot), BANDS = 7, d = skyImg.data;
+                for (let j = 0; j < h; j++) {
+                    const s = (j / (h - 1)) * BANDS, k = Math.floor(s), f = s - k;
+                    for (let i = 0; i < w; i++) {
+                        const kk = Math.min(BANDS, k + (dith(i, j, f) ? 1 : 0)) / BANDS, p = (j * 74 + i) * 4;
+                        d[p] = a[0] + (b[0] - a[0]) * kk; d[p + 1] = a[1] + (b[1] - a[1]) * kk; d[p + 2] = a[2] + (b[2] - a[2]) * kk; d[p + 3] = 255;
+                    }
+                }
+                skyG.putImageData(skyImg, 0, 0);
+            }
+            ctx.drawImage(skyCanvas, x, y);
+        }
+
+        // Round things (the sun, the moon, clouds, tree tops) are painted from little
+        // shape maps: 0 clear, then 1 (shadow) .. 4 (highlight), coloured as they're drawn
+        function discMap(r, light = [-0.55, -0.6]) {
+            const n = Math.ceil(r * 2), m = [];
+            for (let j = 0; j < n; j++) {
+                const row = [];
+                for (let i = 0; i < n; i++) {
+                    const dx = i + 0.5 - r, dy = j + 0.5 - r, e = Math.hypot(dx, dy) / r;
+                    if (e > 1) { row.push(0); continue; }
+                    const lit = (dx * light[0] + dy * light[1]) / r;          // towards the light: +1
+                    row.push(lit > 0.45 ? 4 : lit > -0.05 ? 3 : lit > -0.5 ? 2 : 1);
+                }
+                m.push(row);
+            }
+            return m;
+        }
+        function blobMap(parts, w, h) {   // a union of discs [cx, cy, r], lit from the top left
+            const m = [];
+            for (let j = 0; j < h; j++) {
+                const row = [];
+                for (let i = 0; i < w; i++) {
+                    let best = null;
+                    parts.forEach(([cx, cy, r]) => {
+                        const dx = i + 0.5 - cx, dy = j + 0.5 - cy, e = Math.hypot(dx, dy) / r;
+                        if (e <= 1 && (!best || e < best.e)) best = { e, lit: -(dx + dy) / (r * 1.4) };
+                    });
+                    if (!best) { row.push(0); continue; }
+                    const v = best.lit + (j < h * 0.45 ? 0.25 : -0.15);
+                    row.push(v > 0.4 ? 4 : v > 0 ? 3 : v > -0.45 ? 2 : 1);
+                }
+                m.push(row);
+            }
+            return m;
+        }
+        function paintMap(c, x, y, m, cols, alpha = 1) {
+            const prev = c.globalAlpha;
+            if (alpha < 1) c.globalAlpha = prev * alpha;
+            for (let j = 0; j < m.length; j++) {
+                let i = 0;
+                while (i < m[j].length) {               // runs of the same shade in one go
+                    const v = m[j][i];
+                    let k = i + 1;
+                    while (k < m[j].length && m[j][k] === v) k++;
+                    if (v && cols[v]) pxRect(c, x + i, y + j, k - i, 1, cols[v]);
+                    i = k;
+                }
+            }
+            c.globalAlpha = prev;
+        }
+        const HALO_SM = discMap(6.5), HALO_MD = discMap(8.5), HALO_LG = discMap(12);
+        const SUN_MAP = discMap(4.5), BIG_SUN_MAP = discMap(8, [0, -1]), MOON_MAP = discMap(5.5, [0.8, -0.4]);
+        const CLOUD_MAPS = [
+            blobMap([[5, 6, 4], [10, 4, 4.5], [15, 6, 3.5], [10, 7, 4]], 19, 10),
+            blobMap([[4, 4, 3], [8, 3, 3.2], [11, 5, 2.6]], 14, 7),
+            blobMap([[4, 5, 3.5], [9, 3, 3.6], [13, 4, 3], [17, 5, 2.8], [10, 6, 3]], 21, 9)
+        ];
+
+        function drawSun(o, winX, winY, winW) {
+            if (o.phase === 'day') {
+                const sx = Math.round(winX + 4 + o.sunArc * (winW - 14));
+                const sy = Math.round(winY + 4 + (1 - Math.sin(Math.PI * o.sunArc)) * 22);
+                ctx.save();
+                ctx.globalAlpha = 0.18;                                   // a halo, in two soft rings
+                paintMap(ctx, sx - 4, sy - 4, HALO_MD, [0, '#fff7c2', '#fff7c2', '#fff7c2', '#fff7c2']);
+                ctx.globalAlpha = 0.3;
+                paintMap(ctx, sx - 2, sy - 2, HALO_SM, [0, '#fff3b0', '#fff3b0', '#fff3b0', '#fff3b0']);
+                ctx.restore();
+                paintMap(ctx, sx, sy, SUN_MAP, [0, '#f5b82a', '#facc15', '#fde047', '#fffbe0']);
+            } else {
+                // big and low at sunrise and sunset, banded like an old sunset should be
+                const sx = o.mode === 'auto' ? Math.round(winX + 6 + o.sunArc * (winW - 30)) : winX + 30, sy = winY + 38;
+                ctx.save();
+                ctx.globalAlpha = 0.22;
+                paintMap(ctx, sx - 4, sy - 4, HALO_LG, [0, '#ffb36b', '#ffb36b', '#ffb36b', '#ffb36b']);
+                ctx.restore();
+                BIG_SUN_MAP.forEach((row, j) => {
+                    if (j === 10 || j === 13 || j === 15) return;               // stripes of sky across the bottom
+                    const col = j < 5 ? '#fff0a0' : j < 8 ? '#fde047' : j < 11 ? '#fbbf24' : '#fb923c';
+                    paintMap(ctx, sx, sy + j, [row.map(v => v ? 1 : 0)], [0, col]);
+                });
+            }
+        }
+
+        function drawMoon(o, winX, winY) {
+            const mx = winX + 50, my = winY + 11;
+            ctx.save();
+            ctx.globalAlpha = 0.12;
+            paintMap(ctx, mx - 3, my - 3, HALO_MD, [0, '#fdf6d0', '#fdf6d0', '#fdf6d0', '#fdf6d0']);
+            ctx.restore();
+            // a crescent: the lit disc, with the shadowed part of the moon cut away
+            MOON_MAP.forEach((row, j) => row.forEach((v, i) => {
+                if (!v) return;
+                const dx = i + 0.5 - 7.5, dy = j + 0.5 - 4;                 // the shadow's centre, up and to the right
+                if (Math.hypot(dx, dy) < 4.6) return;
+                const crater = (i === 3 && j === 6) || (i === 2 && j === 4) || (i === 4 && j === 8);
+                pxRect(ctx, mx + i, my + j, 1, 1, crater ? '#d8c27a' : ['', '#e0c873', '#f0dc90', '#fbefb4', '#fffbe2'][v]);
+            }));
+        }
+
+        function drawClouds(o, winX, winY, winW, dark) {
+            const cloudShift = Math.floor(globalTick * 0.08) % 80;
+            if (o.precip || o.cloud > 0.8) {
+                // a heavy grey blanket with a lumpy underside
+                const cc = o.precip ? mixHex('#6b7280', '#1a2233', dark) : mixHex('#9aa3ae', '#1f2838', dark);
+                const cols = [0, shade(cc, -0.3), shade(cc, -0.12), cc, shade(cc, 0.15)];
+                pxRect(ctx, winX, winY, winW, 5, cc);
+                pxRect(ctx, winX, winY, winW, 2, cols[2]);
+                for (let i = 0; i < 6; i++) {
+                    const cx = winX + ((i * 14 + cloudShift) % (winW + 10)) - 8;
+                    paintMap(ctx, cx - 2, winY + 1, CLOUD_MAPS[i % 3], cols);
+                }
+            } else if (o.phase !== 'night') {
+                const cc = o.phase === 'day' ? '#ffffff' : o.phase === 'dawn' ? '#f8d5c4' : '#f5c6a5';
+                const under = o.phase === 'day' ? mixHex(o.skyBot, '#8aa0c0', 0.5) : mixHex(cc, '#9a5a7a', 0.45);
+                const cols = [0, under, mixHex(cc, under, 0.5), mixHex(cc, under, 0.15), cc];
+                paintMap(ctx, winX + ((12 + cloudShift) % 60) - 1, winY + 12, CLOUD_MAPS[0], cols);
+                if (o.cloud > 0.3) {                                   // a properly cloudy day: more of them
+                    const c2 = cols.map(c => c && mixHex(c, '#9ca3af', 0.2));
+                    paintMap(ctx, winX + ((48 + cloudShift) % 62) - 2, winY + 1, CLOUD_MAPS[1], c2);
+                    paintMap(ctx, winX + ((30 + cloudShift * 0.7) % 66) - 3, winY + 24, CLOUD_MAPS[2], c2);
+                }
+            }
+        }
+
+        // The garden: far hills, a row of trees and the lawn, all coloured for the
+        // season and the time of day (and repainted only when those change)
+        const SCENE_TREES = [
+            { x: 3,  y: 56, parts: [[4, 5, 4], [7, 3, 3.5], [9, 6, 3.4]], w: 13, h: 10, kind: 0 },
+            { x: 13, y: 50, parts: [[5, 6, 5], [9, 4, 4.4], [11, 8, 4]], w: 16, h: 13, kind: 1 },
+            { x: 27, y: 55, parts: [[4, 5, 4.2], [8, 4, 3.8], [8, 7, 3.6]], w: 13, h: 11, kind: 2 },
+            { x: 37, y: 49, parts: [[5, 7, 5], [9, 4, 5], [13, 8, 4.4]], w: 18, h: 13, kind: 0 },
+            { x: 52, y: 54, parts: [[4, 5, 4], [8, 3, 4], [10, 7, 3.8]], w: 14, h: 11, kind: 1 },
+            { x: 62, y: 51, parts: [[5, 6, 4.6], [9, 4, 4], [10, 8, 4]], w: 15, h: 12, kind: 2 }
+        ].map(t => ({ ...t, map: blobMap(t.parts, t.w, t.h) }));
+        const SCENE_PAL = {
+            spring: { kinds: [['#2f6b3f', '#3f8f5a', '#5fb36a', '#8fd18a'], ['#2a6340', '#378553', '#58ab67', '#86cc86'], ['#356f3c', '#4a9450', '#6dba62', '#a2dc8e']], hill: '#7fbf7a', grass: '#4f9a4a' },
+            summer: { kinds: [['#1f4d36', '#2d6a4f', '#3f8a5f', '#62a875'], ['#24523a', '#2f7050', '#43905c', '#68ad72'], ['#1d4a30', '#2a6646', '#3b8656', '#5ea36b']], hill: '#6aa66e', grass: '#3f8a4a' },
+            autumn: { kinds: [['#7a2e12', '#b4532a', '#d9762f', '#f0a050'], ['#6b4a0c', '#a16207', '#cf9322', '#ecc155'], ['#5e1c10', '#9a3412', '#c2410c', '#e2703a']], hill: '#a48a5a', grass: '#7a8a3e' },
+            winter: { kinds: [['#1c3a33', '#2f5246', '#3e6a58', '#56826c'], null, ['#22402f', '#33584a', '#466e5a', '#5d8670']], hill: '#9fb0b8', grass: '#6a7f6a' }
+        };
+        const sceneCanvas = document.createElement('canvas');
+        sceneCanvas.width = 74; sceneCanvas.height = 74;
+        const sceneG = sceneCanvas.getContext('2d');
+        let sceneKey = '';
+        function drawScenery(o, winX, winY, dark) {
+            const snowy = o.season === 'winter' || (o.live && o.precip === 'snow');
+            const dusk = o.phase === 'dusk' && !o.precip;
+            const key = [o.season, Math.round(dark * 24), dusk, snowy, o.skyBot].join();
+            if (key !== sceneKey) {
+                sceneKey = key;
+                const g = sceneG, pal = SCENE_PAL[o.season] || SCENE_PAL.summer;
+                const tone = c => { if (dusk) c = mixHex(c, '#451a2b', 0.5); return mixHex(c, '#0c1322', dark); };
+                g.clearRect(0, 0, 74, 74);
+                // far hills, pale with distance
+                const hill = tone(mixHex(pal.hill, o.skyBot, 0.45)), hillLit = tone(mixHex(shade(pal.hill, 0.2), o.skyBot, 0.45));
+                const hillSnow = tone(mixHex('#e8eef4', o.skyBot, 0.3));
+                for (let i = 0; i < 74; i++) {
+                    const top = Math.round(50 + 3.5 * Math.sin(i * 0.085 + 1.2) + 1.8 * Math.sin(i * 0.23));
+                    pxRect(g, i, top, 1, 74 - top, hill);
+                    pxRect(g, i, top, 1, 1, snowy ? hillSnow : hillLit);
+                }
+                // the trees: rounded crowns lit from the top left, on little trunks
+                SCENE_TREES.forEach((t, n) => {
+                    const trunk = tone('#3b2a20');
+                    pxRect(g, t.x + Math.floor(t.w / 2) - 1, t.y + t.h - 2, 2, 74 - t.y - t.h + 2, trunk);
+                    let cols = pal.kinds[t.kind];
+                    if (!cols) {
+                        // winter: a bare tree, its branches traced in snow
+                        const bx = t.x + Math.floor(t.w / 2) - 1, br = tone('#4a3a33'), sn = tone('#e8eef4');
+                        pxRect(g, bx, t.y + 2, 2, 74 - t.y, br);
+                        [[-4, 4, 1], [3, 3, 1], [-3, 8, 0], [4, 7, 0], [-1, 1, 0]].forEach(([dx, dy]) => {
+                            const steps = Math.abs(dx);
+                            for (let k = 0; k <= steps; k++) pxRect(g, bx + Math.sign(dx) * k + (dx > 0 ? 1 : 0), t.y + dy + 3 - Math.round(k * 0.7), 1, 1, br);
+                            pxRect(g, bx + dx + (dx > 0 ? 1 : 0), t.y + dy + 2 - Math.round(steps * 0.7), 1, 1, sn);
+                        });
+                        return;
+                    }
+                    cols = [0, ...cols.map(tone)];
+                    paintMap(g, t.x, t.y, t.map, cols);
+                    // a few leafy clumps catching the light
+                    for (let k = 0; k < 6; k++) {
+                        const i = Math.floor(hash2(n, k, 61) * t.w), j = Math.floor(hash2(n, k, 62) * t.h * 0.7);
+                        if (t.map[j] && t.map[j][i] >= 2) pxRect(g, t.x + i, t.y + j, 1, 1, cols[Math.min(4, t.map[j][i] + 1)]);
+                    }
+                    if (o.season === 'spring') {                                   // blossom
+                        const bc = tone('#f9a8d4');
+                        for (let k = 0; k < 5; k++) {
+                            const i = Math.floor(hash2(n, k, 63) * t.w), j = Math.floor(hash2(n, k, 64) * t.h);
+                            if (t.map[j] && t.map[j][i]) pxRect(g, t.x + i, t.y + j, 1, 1, bc);
+                        }
+                    }
+                    if (snowy) {                                                   // snow settled on the tops
+                        const sn = tone('#e8eef4');
+                        t.map.forEach((row, j) => row.forEach((v, i) => {
+                            if (v >= 3 && (j === 0 || !t.map[j - 1][i])) pxRect(g, t.x + i, t.y + j, 1, 1, sn);
+                        }));
+                    }
+                });
+                // the lawn
+                const grass = tone(pal.grass);
+                pxRect(g, 0, 70, 74, 4, grass);
+                for (let i = 0; i < 74; i++) if (hash2(i, 3, 65) < 0.4) pxRect(g, i, 69, 1, 1, grass);
+                pxRect(g, 0, 70, 74, 1, tone(shade(pal.grass, 0.15)));
+                if (snowy) pxRect(g, 0, 71, 74, 3, tone('#e2e8f0'));
+            }
+            ctx.drawImage(sceneCanvas, winX, winY);
+        }
+
         // ------------------------------------------------------------------
         // THE VIEW OUTSIDE: sky, sun or moon, the trees, the weather and the season
         // ------------------------------------------------------------------
@@ -8434,9 +8737,7 @@
         function drawOutside(winX, winY, winW, winH) {
             const o = outside;
             const dark = clamp(o.darkness / 0.36, 0, 1);                 // 0 = broad daylight, 1 = deep night
-            pxRect(ctx, winX, winY, winW, winH / 2, o.skyTop);
-            pxRect(ctx, winX, winY + winH / 2, winW, winH / 2, o.skyBot);
-            pxRect(ctx, winX, winY + 28, winW, 16, mixHex(o.skyTop, o.skyBot, 0.5));
+            drawSkyGradient(winX, winY, winW, winH, o.skyTop, o.skyBot);
 
             // Stars come out as it gets dark (only the brightest twinkle through rain clouds)
             const starA = clamp((o.darkness - 0.22) / 0.14, 0, 1);
@@ -8449,44 +8750,11 @@
                 ctx.globalAlpha = 1;
             }
             // Crescent moon (unless it's hidden behind thick cloud)
-            if (o.phase === 'night' && !(o.cloud > 0.9)) {
-                pxRect(ctx, winX + 50, winY + 12, 10, 10, '#fef08a');
-                pxRect(ctx, winX + 54, winY + 11, 8, 8, o.skyTop);
-            }
+            if (o.phase === 'night' && !(o.cloud > 0.9)) drawMoon(o, winX, winY);
             // The sun: climbing across the sky by day, big and low at sunrise and sunset
-            if (!o.precip && o.phase !== 'night') {
-                if (o.phase === 'day') {
-                    const sx = Math.round(winX + 4 + o.sunArc * (winW - 14));
-                    const sy = Math.round(winY + 4 + (1 - Math.sin(Math.PI * o.sunArc)) * 22);
-                    pxRect(ctx, sx + 1, sy, 6, 8, '#fde047');
-                    pxRect(ctx, sx, sy + 1, 8, 6, '#fde047');
-                    pxRect(ctx, sx + 2, sy + 2, 4, 4, '#fef9c3');
-                } else {
-                    const sx = o.mode === 'auto' ? Math.round(winX + 6 + o.sunArc * (winW - 30)) : winX + 30;
-                    pxRect(ctx, sx, winY + 38, 16, 16, '#fb923c');
-                    pxRect(ctx, sx + 2, winY + 40, 12, 12, '#fde047');
-                }
-            }
+            if (!o.precip && o.phase !== 'night') drawSun(o, winX, winY, winW);
             // Clouds: fluffy ones drifting by in fine weather, a heavy grey blanket in rain or snow
-            const cloudShift = Math.floor(globalTick * 0.08) % 80;
-            if (o.precip || o.cloud > 0.8) {
-                const cc = o.precip ? mixHex('#6b7280', '#1a2233', dark) : mixHex('#9aa3ae', '#1f2838', dark);
-                pxRect(ctx, winX, winY, winW, 5, cc);
-                for (let i = 0; i < 6; i++) {
-                    const cx = winX + ((i * 14 + cloudShift) % (winW + 10)) - 8;
-                    pxRect(ctx, cx, winY + 4, 12, 3 + (i % 2) * 2, cc);
-                }
-            } else if (o.phase !== 'night') {
-                const cc = o.phase === 'day' ? '#ffffff' : o.phase === 'dawn' ? '#f8d5c4' : '#f5c6a5';
-                pxRect(ctx, winX + ((12 + cloudShift) % 60), winY + 16, 18, 5, cc);
-                pxRect(ctx, winX + ((15 + cloudShift) % 60), winY + 13, 11, 4, cc);
-                if (o.cloud > 0.3) {                                   // a properly cloudy day: more of them
-                    const c2 = mixHex(cc, '#9ca3af', 0.2);
-                    pxRect(ctx, winX + ((48 + cloudShift) % 62), winY + 5, 16, 4, c2);
-                    pxRect(ctx, winX + ((52 + cloudShift) % 62), winY + 2, 8, 3, c2);
-                    pxRect(ctx, winX + ((30 + cloudShift * 0.7) % 66), winY + 27, 14, 4, c2);
-                }
-            }
+            drawClouds(o, winX, winY, winW, dark);
 
             // A distant bonfire in the week of Bonfire Night, once it's dark; fireworks; lightning
             // (all behind the trees, which stand out in silhouette against them)
@@ -8495,33 +8763,11 @@
             drawShootingStar();
             drawLightning(winX, winY, winW, winH);
 
-            // Distant trees: their colours follow the season, fading to silhouettes at night
-            const LEAVES = { spring: ['#3f8f5a'], summer: ['#2d6a4f'], autumn: ['#b4532a', '#c2410c', '#a16207', '#9a3412'], winter: ['#3e5a50'] }[o.season];
-            const snowCol = mixHex('#e2e8f0', '#4b5873', dark);
-            let ti = 0;
-            for (let tx = winX + 4; tx < winX + winW - 6; tx += 11, ti++) {
-                const treeH = 12 + ((tx * 7) % 10);
-                let col = LEAVES[ti % LEAVES.length];
-                if (o.phase === 'dusk' && !o.precip) col = mixHex(col, '#451a2b', 0.5);
-                col = mixHex(col, '#0c1322', dark);
-                const top = winY + winH - treeH;
-                pxRect(ctx, tx, top, 9, treeH, col);
-                pxRect(ctx, tx + 2, top - 4, 5, 4, col);
-                if (o.season === 'winter') {                                // snow on the branches
-                    pxRect(ctx, tx + 2, top - 4, 5, 2, snowCol);
-                    pxRect(ctx, tx, top, 9, 1, snowCol);
-                    pxRect(ctx, tx + 1, top + 5, 7, 1, snowCol);
-                } else if (o.season === 'spring') {                         // blossom
-                    const bc = mixHex('#f9a8d4', '#3b2140', dark);
-                    pxRect(ctx, tx + 2, top + 2, 1, 1, bc);
-                    pxRect(ctx, tx + 6, top + 4, 1, 1, bc);
-                    pxRect(ctx, tx + 4, top - 2, 1, 1, bc);
-                }
-            }
-            if (o.season === 'winter' || (o.live && o.precip === 'snow')) pxRect(ctx, winX, winY + winH - 3, winW, 3, snowCol);   // snow on the ground
+            // The garden: far hills, trees in their seasonal colours (silhouettes at night), the lawn
+            drawScenery(o, winX, winY, dark);
 
             // Out on the lawn, in front of the trees: the fox, and whatever that is
-            drawFox();
+            if (fox.active) spriteFX(ctx, 125, 80, drawFox);
             drawUfo();
 
             // Falling weather: rain, snow, autumn leaves or spring blossom
@@ -8576,10 +8822,9 @@
             }
 
             // The bird feeder outside, and any visitors to it
-            drawFeeder();
-            drawBird();
-            drawSquirrel();
-            drawStray();
+            spriteFX(ctx, 125, 80, () => { drawFeeder(); drawBird(); });
+            if (squirrel.active) spriteFX(ctx, 125, 80, drawSquirrel);
+            if (stray.active && stray.phase !== 'enter') spriteFX(ctx, 125, 80, drawStray);
             drawMoths();
         }
 
@@ -8673,313 +8918,1210 @@
         const TREE_LIGHTS = [[198, 103], [203, 107], [195, 110], [205, 115], [192, 118], [200, 121], [208, 124],
                              [190, 127], [197, 129], [204, 131], [211, 133], [194, 134]];
         const TREE_BAUBLES = [[199, 107, '#dc2626'], [196, 115, '#facc15'], [204, 119, '#3b82f6'], [193, 123, '#e5e7eb'], [206, 126, '#dc2626']];
-        function drawChristmasTree() {
+        let treeArt = null;
+        function paintChristmasTree() {
+            const S = painter(36, 52), ox = 183, oy = 92;
+            const q = (x, y) => [x - ox, y - oy];
+            const G = ramp('#15803d', [-0.6, -0.4, -0.2, 0, 0.18, 0.34]);
             const cx = 200;
-            pxRect(ctx, 192, 141, 17, 3, '#7c4a24');                           // stand
-            pxRect(ctx, 198, 134, 5, 8, '#5b3a1e');                            // trunk
-            [[99, 108, 1, 6], [105, 118, 3, 9], [114, 128, 5, 12], [124, 136, 7, 14]].forEach(([y0, y1, w0, w1]) => {
+            // stand and trunk
+            S.map(...q(192, 140), ['.hhbbbbbbbbbbbdd.', 'hbbbbbbbbbbbbbddd', '.ddddddddddddddd.'], { h: '#a8703c', b: '#7c4a24', d: '#4a2a12' });
+            T_rect(S, q, 198, 134, 2, 6, '#7a5030'); T_rect(S, q, 200, 134, 3, 6, '#4a2f1a');
+            // four tiers of branches, lit from the left, each with a ragged, drooping hem
+            [[99, 108, 1, 6], [105, 118, 3, 9], [114, 128, 5, 12], [124, 136, 7, 14]].forEach(([y0, y1, w0, w1], tier) => {
                 for (let y = y0; y <= y1; y++) {
                     const hw = Math.round(w0 + (w1 - w0) * (y - y0) / (y1 - y0));
-                    pxRect(ctx, cx - hw, y, hw * 2 + 1, 1, '#15803d');
-                    pxRect(ctx, cx + Math.ceil(hw / 3), y, hw - Math.ceil(hw / 3) + 1, 1, '#166534'); // shade on the right
+                    for (let x = cx - hw; x <= cx + hw; x++) {
+                        const u = (x - cx) / Math.max(1, hw);
+                        let k = u < -0.55 ? 4 : u < -0.1 ? 3 : u < 0.45 ? 2 : 1;
+                        if (y >= y1 - 1) k = Math.min(5, k + 1);                       // the hem catches the light
+                        if ((x + y * 2) % 4 === 0) k = Math.max(0, k - 1);             // needles
+                        if (y === y1 && (x + tier) % 3 === 0) continue;                // ragged edge
+                        S.set(...q(x, y), G[k]);
+                    }
                 }
             });
             // a swoop of gold tinsel on each tier
-            for (let i = 0; i < 26; i++) {
-                const y = 109 + i, x = cx - 8 + ((i * 7) % 18);
-                if ((i % 3) === 0) pxRect(ctx, x, y, 1, 1, '#fcd34d');
-            }
-            TREE_BAUBLES.forEach(([x, y, col]) => {
-                pxRect(ctx, x - 1, y - 1, 3, 3, col);
-                pxRect(ctx, x - 1, y - 1, 1, 1, '#ffffff');
+            [[103, 4], [111, 7], [121, 10], [131, 12]].forEach(([y, hw]) => {
+                for (let x = -hw; x <= hw; x++) {
+                    const yy = y + Math.round((x + hw) * 0.35) - (x > 0 ? Math.round(x * 0.2) : 0);
+                    if (S.has(...q(cx + x, yy))) S.set(...q(cx + x, yy), (x + hw) % 2 ? '#fcd34d' : '#d9a028');
+                }
             });
-            // twinkling fairy lights
+            TREE_BAUBLES.forEach(([x, y, col]) => {
+                S.map(...q(x - 1, y - 1), ['hbd', 'bbd', 'ddd'], { h: '#ffffff', b: col, d: shade(col, -0.4) });
+            });
+            // star on top
+            S.map(...q(198, 93), ['..h..', '.hbb.', 'hbbbd', '.bbd.', 'b.d.d'], { h: '#fff7c2', b: '#facc15', d: '#c48a0c' });
+            // presents
+            S.map(...q(185, 136), ['hhhhYhhhh', 'rrrrYrrrd', 'rrrrYrrrd', 'YYYYYYYYd', 'rrrrYrrrd', 'rrrrYrrrd', 'ddddYdddd'],
+                  { h: '#f87171', r: '#dc2626', d: '#8a1414', Y: '#fde047' });
+            S.map(...q(207, 135), ['...ww....', '..w..w...', 'hhhhWhhhh', 'bbbbWbbbd', 'WWWWWWWWd', 'bbbbWbbbd', 'bbbbWbbbd', 'ddddWdddd'],
+                  { h: '#60a5fa', b: '#2563eb', d: '#173a8a', W: '#e5e7eb', w: '#f8fafc' });
+            S.outline(-0.8);
+            return S;
+        }
+        function drawChristmasTree() {
+            if (!treeArt) treeArt = paintChristmasTree().toCanvas();
+            ctx.drawImage(treeArt, 183, 92);
+            // twinkling fairy lights, each with a little glow
             const cols = ['#fde047', '#f472b6', '#60a5fa', '#4ade80', '#fb923c'];
             TREE_LIGHTS.forEach(([x, y], i) => {
                 const on = (Math.floor(globalTick / 25) + i) % 4 !== 0;
-                pxRect(ctx, x, y, 1, 1, on ? cols[(i + Math.floor(globalTick / 100)) % cols.length] : '#14532d');
+                const col = cols[(i + Math.floor(globalTick / 100)) % cols.length];
+                if (on) {
+                    ctx.globalAlpha = 0.4;
+                    pxRect(ctx, x - 1, y, 3, 1, col); pxRect(ctx, x, y - 1, 1, 3, col);
+                    ctx.globalAlpha = 1;
+                }
+                pxRect(ctx, x, y, 1, 1, on ? (Math.floor(globalTick / 6 + i) % 5 ? col : '#ffffff') : '#14532d');
             });
-            // star on top
-            pxRect(ctx, cx, 94, 1, 5, '#fde047');
-            pxRect(ctx, cx - 2, 96, 5, 1, '#fde047');
-            pxRect(ctx, cx - 1, 95, 3, 3, '#facc15');
-            // presents
-            pxRect(ctx, 185, 136, 9, 7, '#dc2626');
-            pxRect(ctx, 189, 136, 1, 7, '#fde047');
-            pxRect(ctx, 185, 139, 9, 1, '#fde047');
-            pxRect(ctx, 207, 137, 9, 6, '#2563eb');
-            pxRect(ctx, 211, 137, 1, 6, '#e5e7eb');
-            pxRect(ctx, 207, 139, 9, 1, '#e5e7eb');
-            pxRect(ctx, 210, 135, 3, 2, '#e5e7eb');                             // bow
         }
 
-        function drawRoomEnvironment() {
-            // 1. Cozy Wallpaper (Warm terracotta/brown with subtle vertical stripes &wainscoting)
-            pxRect(ctx, 0, 0, W, 134, '#5a392b');
-            for (let x = 0; x < W; x += 12) {
-                pxRect(ctx, x, 0, 6, 134, '#523326');
-                pxRect(ctx, x + 2, 0, 1, 134, '#654233');
+        // ------------------------------------------------------------------
+        // 16-BIT ART: the room is painted the way a Super Nintendo game would
+        // have been. Every material has its own short ramp of hue-shifted
+        // shades (shadows drift cool and purple, highlights warm and golden),
+        // surfaces have texture (wood grain, brickwork, velvet folds, sisal,
+        // wool), soft gradients are dithered, the light comes from the top
+        // left, and things cast soft shadows. The parts of the room that never
+        // move are painted once into an offscreen picture (and repainted when
+        // the decorations change); the cats and everything else that moves get
+        // their shading and outline added as they're drawn (see spriteFX).
+        // ------------------------------------------------------------------
+        const RGB_CACHE = new Map();
+        function rgbOf(col) {
+            if (typeof col !== 'string') return col;
+            let v = RGB_CACHE.get(col);
+            if (!v) {
+                if (col[0] === '#') {
+                    const n = parseInt(col.slice(1, 7), 16);
+                    v = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+                } else {
+                    const m = col.match(/[\d.]+/g).map(Number);
+                    v = [m[0], m[1], m[2]];
+                }
+                RGB_CACHE.set(col, v);
             }
-
-            // Wooden Wainscoting / Baseboard along bottom of wall
-            pxRect(ctx, 0, 108, W, 26, '#3e271d');
-            pxRect(ctx, 0, 108, W, 2, '#694635');
-            for (let x = 8; x < W; x += 16) {
-                pxRect(ctx, x, 112, 12, 18, '#331f17');
-                pxRect(ctx, x + 1, 113, 10, 16, '#442b20');
+            return v;
+        }
+        function rgbHex(c) { return '#' + c.map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join(''); }
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+            if (mx === mn) return [0, 0, l];
+            const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+            const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+            return [h * 60, s, l];
+        }
+        function hslToRgb(h, s, l) {
+            h = (((h % 360) + 360) % 360) / 360;
+            if (s <= 0) return [l * 255, l * 255, l * 255];
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+            const f = t => {
+                t = (t + 1) % 1;
+                return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+            };
+            return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
+        }
+        function hueToward(h, target, deg) {
+            const diff = ((target - h + 540) % 360) - 180;
+            return h + Math.sign(diff) * Math.min(Math.abs(diff), deg);
+        }
+        // A pixel-artist's shade of a colour: amt -1 is its deepest shadow (darker, richer,
+        // drifting towards indigo), +1 its brightest highlight (paler, drifting towards gold)
+        const SHADE_CACHE = new Map();
+        function shadeRgb(c, amt) {
+            const key = (((c[0] << 16) | (c[1] << 8) | c[2]) * 128) + Math.round((amt + 1) * 63);
+            let v = SHADE_CACHE.get(key);
+            if (v) return v;
+            let [h, s, l] = rgbToHsl(c[0], c[1], c[2]);
+            // keep the colour's real intensity (chroma) as it gets lighter or darker, so very pale
+            // or very dark colours don't turn lurid
+            const C = s * (1 - Math.abs(2 * l - 1));
+            const satFor = L => C / Math.max(0.02, 1 - Math.abs(2 * L - 1));
+            if (amt < 0) {
+                const a = -amt;
+                l *= 1 - 0.62 * a;
+                s = satFor(l);
+                if (C < 0.05) { h = C < 0.01 ? 235 : hueToward(h, 235, 60); s = Math.max(s, 0.05 + 0.1 * a); }   // greys go a little blue in shadow
+                h = hueToward(h, 255, 32 * a);
+                s = Math.min(1, s + 0.12 * a);
+            } else if (amt > 0) {
+                l += (1 - l) * 0.6 * amt;
+                s = satFor(l);
+                if (C < 0.05) { h = C < 0.01 ? 45 : h; s = Math.max(s, 0.06 * amt); }              // ...and a little warm in the light
+                h = hueToward(h, 50, 16 * amt);
+                s = Math.max(0, Math.min(1, s - 0.05 * amt));
             }
-            pxRect(ctx, 0, 132, W, 3, '#24150e');
-            if (outside.festive === 'halloween') drawCobweb();
+            v = hslToRgb(h, s, l).map(Math.round);
+            if (SHADE_CACHE.size > 40000) SHADE_CACHE.clear();
+            SHADE_CACHE.set(key, v);
+            return v;
+        }
+        function shade(col, amt) { return rgbHex(shadeRgb(rgbOf(col), amt)); }
+        function ramp(col, amts) { return amts.map(a => shade(col, a)); }
 
-            // Mouse holes in the skirting board
-            MOUSE_HOLES.forEach(h => {
-                pxRect(ctx, h.x - 5, 126, 11, 9, '#2a1912');      // worn rim
-                pxRect(ctx, h.x - 4, 127, 9, 8, '#0d0705');       // dark hole
-                pxRect(ctx, h.x - 3, 125, 7, 2, '#2a1912');
-                pxRect(ctx, h.x - 2, 126, 5, 1, '#0d0705');
-            });
+        // Ordered (Bayer) dithering: is this pixel 'on' in a pattern with coverage t (0..1)?
+        const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+        function dith(x, y, t) { return t * 16 > BAYER4[((y & 3) << 2) | (x & 3)] + 0.5; }
+        // Repeatable 'random' numbers for texture, so the room looks the same every visit
+        function hash2(x, y, seed = 0) {
+            let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(seed | 0, 1442695041);
+            h = Math.imul(h ^ (h >>> 13), 1274126177);
+            return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+        }
 
-            // 2. Hardwood Floor Planks
-            pxRect(ctx, 0, 135, W, 55, '#6e4730');
-            for (let y = 135; y < H; y += 7) {
-                pxRect(ctx, 0, y, W, 1, '#4f311f');
-                const offset = (y * 19) % 45;
-                for (let x = offset; x < W; x += 45) {
-                    pxRect(ctx, x, y, 1, 7, '#4f311f');
+        // An offscreen picture to paint pixel by pixel
+        function painter(w, h) {
+            const d = new Uint8ClampedArray(w * h * 4);
+            const P = {
+                w, h, d,
+                has(x, y) { return x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0; },
+                get(x, y) {
+                    if (!P.has(x, y)) return null;
+                    const i = (y * w + x) * 4;
+                    return [d[i], d[i + 1], d[i + 2]];
+                },
+                set(x, y, col, a = 1) {
+                    x = Math.floor(x); y = Math.floor(y);
+                    if (x < 0 || y < 0 || x >= w || y >= h || !col) return;
+                    const c = rgbOf(col), i = (y * w + x) * 4;
+                    if (a >= 1 || !d[i + 3]) {
+                        d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = a >= 1 ? 255 : Math.round(255 * a);
+                    } else {
+                        d[i] += (c[0] - d[i]) * a; d[i + 1] += (c[1] - d[i + 1]) * a; d[i + 2] += (c[2] - d[i + 2]) * a;
+                    }
+                },
+                rect(x, y, rw, rh, col) {
+                    for (let yy = y; yy < y + rh; yy++) for (let xx = x; xx < x + rw; xx++) P.set(xx, yy, col);
+                },
+                // a dithered blend between two colours (t = how much of b)
+                dither(x, y, rw, rh, a, b, t) {
+                    for (let yy = y; yy < y + rh; yy++) for (let xx = x; xx < x + rw; xx++) P.set(xx, yy, dith(xx, yy, t) ? b : a);
+                },
+                // reshade what's already painted (amt < 0 darkens), only where a dither pattern of coverage t is on
+                tint(x, y, rw, rh, amt, t = 1) {
+                    for (let yy = y; yy < y + rh; yy++) for (let xx = x; xx < x + rw; xx++) {
+                        if (!P.has(xx, yy) || (t < 1 && !dith(xx, yy, t))) continue;
+                        const i = (yy * w + xx) * 4, s = shadeRgb([d[i], d[i + 1], d[i + 2]], amt);
+                        d[i] = s[0]; d[i + 1] = s[1]; d[i + 2] = s[2];
+                    }
+                },
+                // a soft dithered shadow, darkest at the top edge and fading away downwards
+                fade(x, y, rw, rh, amt, t0 = 1) {
+                    for (let j = 0; j < rh; j++) P.tint(x, y + j, rw, 1, amt, t0 * (1 - j / rh));
+                },
+                erase(x, y, rw, rh) {
+                    for (let yy = Math.max(0, y); yy < Math.min(h, y + rh); yy++)
+                        for (let xx = Math.max(0, x); xx < Math.min(w, x + rw); xx++) d[(yy * w + xx) * 4 + 3] = 0;
+                },
+                // a little bitmap: rows of characters, each looked up in pal (unknown ones are left clear)
+                map(x, y, rows, pal) {
+                    rows.forEach((row, j) => {
+                        for (let i = 0; i < row.length; i++) { const col = pal[row[i]]; if (col) P.set(x + i, y + j, col); }
+                    });
+                },
+                // a dark line round everything painted so far, in a deep shade of whatever it's next to
+                outline(amt = -0.8) {
+                    const src = d.slice();
+                    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+                        const i = (y * w + x) * 4;
+                        if (src[i + 3]) continue;
+                        for (const [dx, dy] of OUTLINE_DIRS) {
+                            const xx = x + dx, yy = y + dy;
+                            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+                            const j = (yy * w + xx) * 4;
+                            if (src[j + 3] < 200) continue;
+                            const s = shadeRgb([src[j], src[j + 1], src[j + 2]], amt);
+                            d[i] = s[0]; d[i + 1] = s[1]; d[i + 2] = s[2]; d[i + 3] = 255;
+                            break;
+                        }
+                    }
+                    return P;
+                },
+                toCanvas() {
+                    const cv = document.createElement('canvas');
+                    cv.width = w; cv.height = h;
+                    cv.getContext('2d').putImageData(new ImageData(d, w, h), 0, 0);
+                    return cv;
+                }
+            };
+            return P;
+        }
+        const OUTLINE_DIRS = [[0, 1], [0, -1], [-1, 0], [1, 0]];
+
+        // Copy a painted piece onto the room at (x, y), first darkening the shadow it casts
+        // down and to the right of itself (light comes in from the top left)
+        function stamp(dst, src, x, y, shadow = null) {
+            if (shadow) {
+                const [sx, sy, amt, soft] = shadow;
+                for (let j = 0; j < src.h; j++) for (let i = 0; i < src.w; i++) {
+                    if (!src.has(i, j)) continue;
+                    if (!src.has(i + sx, j + sy)) dst.tint(x + i + sx, y + j + sy, 1, 1, amt);
+                    if (soft && !src.has(i + sx + 1, j + sy + 1) && !src.has(i + sx, j + sy) && dith(x + i, y + j, 0.5)) dst.tint(x + i + sx + 1, y + j + sy + 1, 1, 1, amt * 0.6);
                 }
             }
-
-            // 3. Large Window with Outside Sky, Weather & Sill (x: 88..162, y: 22..96)
-            const winX = 88, winY = 22, winW = 74, winH = 74;
-            drawOutside(winX, winY, winW, winH);
-
-            // Window Panes & Cozy Wooden Frame
-            pxRect(ctx, winX - 4, winY - 4, winW + 8, 4, '#362117'); // Top frame
-            pxRect(ctx, winX - 4, winY, 4, winH, '#362117');        // Left frame
-            pxRect(ctx, winX + winW, winY, 4, winH, '#362117');     // Right frame
-            // Cross muntins
-            pxRect(ctx, winX + winW / 2 - 1, winY, 3, winH, '#362117');
-            pxRect(ctx, winX, winY + winH / 2 - 1, winW, 3, '#362117');
-
-            // Cozy Curtains on left and right of window
-            pxRect(ctx, winX - 10, winY - 2, 9, winH + 6, '#991b1b');
-            pxRect(ctx, winX - 8, winY - 2, 2, winH + 6, '#b91c1c');
-            pxRect(ctx, winX + winW + 1, winY - 2, 9, winH + 6, '#991b1b');
-            pxRect(ctx, winX + winW + 3, winY - 2, 2, winH + 6, '#b91c1c');
-            // Curtain rod
-            pxRect(ctx, winX - 13, winY - 5, winW + 26, 2, '#1e140f');
-            if (outside.season === 'winter' || (outside.temp !== undefined && outside.temp !== null && outside.temp <= 1)) drawFrost(winX, winY, winW, winH);
-            if (outside.festive === 'halloween') drawHalloweenBats();
-
-            // Wide Windowsill Perch (for cats to sit on!)
-            pxRect(ctx, winX - 8, winY + winH, winW + 16, 5, '#7c533b');
-            pxRect(ctx, winX - 6, winY + winH + 5, winW + 12, 3, '#472d1e');
-
-            // 4. Family portraits: one of each cat, all the same size (equality!)
-            WALL_PORTRAITS.forEach(pt => { if (!pt.chimney) drawWallPortrait(pt); });
-
-            // Wall Bookshelf & Trailing Pothos Plant (x: 178..244, y: 32..68)
-            pxRect(ctx, 180, 46, 58, 4, '#362117');
-            pxRect(ctx, 184, 50, 3, 4, '#23140d');
-            pxRect(ctx, 230, 50, 3, 4, '#23140d');
-            // Pixel Books on shelf
-            const bookColors = ['#dc2626', '#2563eb', '#d97706', '#16a34a', '#9333ea', '#0284c7'];
-            for (let i = 0; i < 6; i++) {
-                const bh = 9 + (i % 3) * 2;
-                pxRect(ctx, 184 + i * 5, 46 - bh, 4, bh, bookColors[i]);
-                pxRect(ctx, 184 + i * 5, 46 - bh + 2, 4, 1, '#fef3c7');
+            for (let j = 0; j < src.h; j++) for (let i = 0; i < src.w; i++) {
+                const k = (j * src.w + i) * 4;
+                if (src.d[k + 3]) dst.set(x + i, y + j, [src.d[k], src.d[k + 1], src.d[k + 2]], src.d[k + 3] / 255);
             }
-            // Terracotta pot & cascading vine on shelf right
-            pxRect(ctx, 222, 36, 10, 10, '#c2410c');
-            pxRect(ctx, 221, 35, 12, 2, '#ea580c');
-            // Cascading green leaves
-            const vineCoords = [
-                [220, 33], [224, 31], [228, 32], [232, 36], [234, 41],
-                [233, 47], [235, 53], [233, 59], [230, 49]
-            ];
-            vineCoords.forEach(([vx, vy], idx) => {
-                pxRect(ctx, vx, vy, 4, 4, idx % 2 === 0 ? '#15803d' : '#22c55e');
+        }
+
+        // Wood: long dashes of darker and lighter grain running along the board
+        function woodFill(P, x, y, w, h, base, seed, dark = -0.14, light = 0.08, run = 6) {
+            const gd = shade(base, dark), gl = shade(base, light);
+            for (let yy = y; yy < y + h; yy++) {
+                const shift = Math.floor(hash2(yy, 11, seed) * 40);
+                for (let xx = x; xx < x + w; xx++) {
+                    const n = hash2(Math.floor((xx + shift) / run), yy, seed);
+                    P.set(xx, yy, n < 0.2 ? gd : n > 0.9 ? gl : base);
+                }
+            }
+        }
+        // Fuzzy carpet / fabric: a sprinkle of lighter and darker fibres
+        function fuzzFill(P, x, y, w, h, base, seed, amt = 0.12, density = 0.16) {
+            const fl = shade(base, amt), fd = shade(base, -amt);
+            for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+                const n = hash2(xx, yy, seed);
+                P.set(xx, yy, n < density / 2 ? fd : n > 1 - density / 2 ? fl : base);
+            }
+        }
+
+        // ---------- Sprites: shading and an outline, added live ----------
+        // Everything that moves (the cats above all) is first drawn into a little scratch
+        // canvas, then shaded the 16-bit way on its way into the room: the top edge of every
+        // shape catches the light, the underside falls into shadow, the far side is a touch
+        // darker, and a dark line in a deeper shade of its own colours runs round the outside.
+        // Because it works on whatever was drawn, every pose of every cat (kittens too) gets it.
+        const FX_BOX = 96, FX_OX = 48, FX_OY = 72;
+        const fxIn = document.createElement('canvas');
+        fxIn.width = fxIn.height = FX_BOX;
+        const fxInG = fxIn.getContext('2d', { willReadFrequently: true });
+        const fxOut = document.createElement('canvas');
+        fxOut.width = fxOut.height = FX_BOX;
+        const fxOutG = fxOut.getContext('2d');
+        const fxImg = fxOutG.createImageData(FX_BOX, FX_BOX);
+        const fxSolid = new Uint8Array(FX_BOX * FX_BOX);
+        let fxBusy = false;
+        // draw(g) paints the sprite in room coordinates; (wx, wy) is roughly where it stands
+        function spriteFX(target, wx, wy, draw, opt = {}) {
+            if (fxBusy) { draw(target); return; }
+            fxBusy = true;
+            const ox = Math.round(wx) - FX_OX, oy = Math.round(wy) - FX_OY;
+            const real = ctx;
+            try {
+                fxInG.setTransform(1, 0, 0, 1, 0, 0);
+                fxInG.globalAlpha = 1;
+                fxInG.clearRect(0, 0, FX_BOX, FX_BOX);
+                fxInG.imageSmoothingEnabled = false;
+                fxInG.setTransform(1, 0, 0, 1, -ox, -oy);
+                ctx = fxInG;
+                draw(fxInG);
+            } finally {
+                ctx = real;
+                fxInG.setTransform(1, 0, 0, 1, 0, 0);
+                fxInG.globalAlpha = 1;
+                fxBusy = false;
+            }
+            const B = FX_BOX, src = fxInG.getImageData(0, 0, B, B).data, out = fxImg.data;
+            let x0 = B, y0 = B, x1 = -1, y1 = -1;
+            for (let p = 0, y = 0; y < B; y++) for (let x = 0; x < B; x++, p++) {
+                const a = src[p * 4 + 3];
+                fxSolid[p] = a >= 250 ? 1 : 0;
+                if (a) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+            }
+            if (x1 < 0) return;
+            x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(B - 1, x1 + 1); y1 = Math.min(B - 1, y1 + 1);
+            if (opt.round !== false) {
+                // knock the square corners off chunky shapes (only where there's a solid 3x3
+                // block behind the corner, so ears, paws and tails keep their points)
+                const S = fxSolid, cut = [];
+                for (let y = y0 + 1; y < y1 - 1; y++) for (let x = x0 + 1; x < x1 - 1; x++) {
+                    const p = y * B + x;
+                    if (!S[p]) continue;
+                    const up = S[p - B], dn = S[p + B], lf = S[p - 1], rt = S[p + 1];
+                    if (up && dn || lf && rt || (!up && !dn) || (!lf && !rt)) continue;
+                    const sx = rt ? 1 : -1, sy = dn ? B : -B;
+                    let full = true;
+                    for (let j = 0; j < 3 && full; j++) for (let i = 0; i < 3; i++) if (!S[p + j * sy + i * sx]) { full = false; break; }
+                    if (full) cut.push(p);
+                }
+                cut.forEach(p => { S[p] = 0; });
+            }
+            out.fill(0);
+            const lit = opt.light ?? 0.3, dim = opt.dim ?? 0.34, line = opt.outline ?? -0.8;
+            const rgb = [0, 0, 0];
+            for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+                const p = y * B + x, i = p * 4;
+                if (fxSolid[p]) {
+                    const up = y > 0 && fxSolid[p - B], dn = y < B - 1 && fxSolid[p + B], dn2 = y < B - 2 && fxSolid[p + 2 * B];
+                    const lf = x > 0 && fxSolid[p - 1], rt = x < B - 1 && fxSolid[p + 1];
+                    let amt = 0;
+                    if (!up) amt += lit;
+                    else if (!lf) amt += lit * 0.4;
+                    if (!dn) amt -= dim;
+                    else if (!dn2) amt -= dim * 0.4;
+                    else if (!rt) amt -= dim * 0.3;
+                    if (amt) {
+                        rgb[0] = src[i]; rgb[1] = src[i + 1]; rgb[2] = src[i + 2];
+                        const s = shadeRgb(rgb, clamp(amt, -1, 1));
+                        out[i] = s[0]; out[i + 1] = s[1]; out[i + 2] = s[2];
+                    } else {
+                        out[i] = src[i]; out[i + 1] = src[i + 1]; out[i + 2] = src[i + 2];
+                    }
+                    out[i + 3] = 255;
+                    continue;
+                }
+                // the outline: borrow the colour of the sprite pixel next door, deeply shaded
+                let j = -1;
+                if (y > 0 && fxSolid[p - B]) j = p - B;
+                else if (x > 0 && fxSolid[p - 1]) j = p - 1;
+                else if (x < B - 1 && fxSolid[p + 1]) j = p + 1;
+                else if (y < B - 1 && fxSolid[p + B]) j = p + B;
+                if (j >= 0 && line) {
+                    rgb[0] = src[j * 4]; rgb[1] = src[j * 4 + 1]; rgb[2] = src[j * 4 + 2];
+                    const s = shadeRgb(rgb, line);
+                    out[i] = s[0]; out[i + 1] = s[1]; out[i + 2] = s[2]; out[i + 3] = 255;
+                } else if (src[i + 3] && src[i + 3] < 250) {               // soft things (shadows) pass straight through
+                    out[i] = src[i]; out[i + 1] = src[i + 1]; out[i + 2] = src[i + 2]; out[i + 3] = src[i + 3];
+                }
+            }
+            fxOutG.putImageData(fxImg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+            target.drawImage(fxOut, x0, y0, x1 - x0 + 1, y1 - y0 + 1, ox + x0, oy + y0, x1 - x0 + 1, y1 - y0 + 1);
+        }
+
+        // ---------- Painting the room (once, into an offscreen picture) ----------
+        const WIN = { x: 88, y: 22, w: 74, h: 74 };
+        const WIN_PANES = [[88, 22, 36, 36], [127, 22, 35, 36], [88, 61, 36, 35], [127, 61, 35, 35]];   // the glass, between the bars
+        let roomArt = null, roomArtKey = null;
+        function roomBackdrop() {
+            const key = outside.festive || '-';
+            if (roomArt && roomArtKey === key) return roomArt;
+            roomArtKey = key;
+            const P = painter(W, H);
+            paintWallpaper(P);
+            paintWainscot(P);
+            paintFloor(P);
+            if (key === 'halloween') paintCobweb(P);
+            paintWindow(P);
+            paintShelf(P);
+            paintFireplace(P);
+            paintSteps(P);
+            paintCatTree(P);
+            paintSofa(P);
+            if (key !== 'christmas') paintPlant(P);
+            paintRugs(P);
+            paintBowlMat(P);
+            WIN_PANES.forEach(([x, y, w, h]) => P.erase(x, y, w, h));   // see-through glass
+            roomArt = P.toCanvas();
+            return roomArt;
+        }
+
+        function paintWallpaper(P) {
+            // Regency stripes: a broad band with a little damask motif (half-dropped from
+            // band to band), a pinstripe, then a plain band. Same 12px repeat as ever.
+            const B = '#4c2f23', A = '#5a392b', PIN = '#6a4636', PIN2 = '#4a2c21', M1 = '#533327', M2 = '#5f3d2e';
+            const MOTIF = ['..1..', '.121.', '12.21', '.121.', '..1..'];
+            for (let y = 0; y < 108; y++) for (let x = 0; x < W; x++) {
+                const b = x % 12;
+                let col = b < 7 ? B : b === 7 ? PIN : b === 11 ? PIN2 : A;
+                if (b >= 1 && b <= 5) {
+                    const drop = Math.floor(x / 12) % 2 ? 6 : 0;
+                    const ch = MOTIF[(y + drop) % 12] && MOTIF[(y + drop) % 12][b - 1];
+                    if (ch === '1') col = M1; else if (ch === '2') col = M2;
+                }
+                if (b >= 8 && b <= 10 && hash2(x, y, 5) < 0.07) col = '#55362a';    // a little paper texture
+                P.set(x, y, col);
+            }
+            // Crown moulding along the ceiling, and its shadow fading down the wall
+            P.rect(0, 0, W, 1, '#22140e');
+            P.rect(0, 1, W, 1, '#3d271c');
+            P.rect(0, 2, W, 1, '#6e4a37');
+            P.rect(0, 3, W, 1, '#4a3022');
+            P.rect(0, 4, W, 1, '#2a1912');
+            for (let j = 0; j < 18; j++) P.tint(0, 5 + j, W, 1, -0.3, 1 - j / 18);
+            // the corners of the room are a touch darker
+            for (let i = 0; i < 14; i++) {
+                P.tint(i, 5, 1, 103, -0.22, (14 - i) / 14 * 0.7);
+                P.tint(W - 1 - i, 5, 1, 103, -0.22, (14 - i) / 14 * 0.7);
+            }
+        }
+
+        function paintWainscot(P) {
+            // Chair rail
+            P.rect(0, 108, W, 1, '#8a5e45');
+            P.rect(0, 109, W, 1, '#6e4a37');
+            P.rect(0, 110, W, 1, '#4f3324');
+            P.rect(0, 111, W, 1, '#24150e');
+            // Panelling, with raised panels bevelled to catch the light
+            woodFill(P, 0, 112, W, 18, '#3e271d', 21, -0.12, 0.07, 8);
+            for (let x = 8; x < W; x += 16) {
+                const y = 112;
+                P.rect(x, y, 12, 1, '#2a1911');                   // groove, in shadow along the top
+                P.rect(x, y, 1, 18, '#2a1911');                   // ...and the left
+                P.rect(x, y + 17, 12, 1, '#57392b');              // lit groove edges at the bottom and right
+                P.rect(x + 11, y, 1, 18, '#4d3226');
+                woodFill(P, x + 2, y + 2, 8, 14, '#46291f', x, -0.1, 0.06, 5);
+                P.rect(x + 1, y + 1, 10, 1, '#5e3e2e');           // the bevel: lit top and left...
+                P.rect(x + 1, y + 1, 1, 16, '#5a3a2b');
+                P.rect(x + 1, y + 16, 10, 1, '#2e1c14');          // ...shaded bottom and right
+                P.rect(x + 10, y + 2, 1, 15, '#331f16');
+            }
+            P.tint(0, 112, W, 1, -0.25);                          // the rail's shadow on the panels
+            // Skirting board
+            P.rect(0, 130, W, 1, '#6a4634');
+            P.rect(0, 131, W, 1, '#4a2f22');
+            woodFill(P, 0, 132, W, 2, '#341f16', 33, -0.12, 0.06, 7);
+            P.rect(0, 134, W, 1, '#1a0f0a');
+            // Mouse holes, nibbled into the skirting
+            MOUSE_HOLES.forEach(h => {
+                const x = h.x - 5;
+                P.map(x, 125, [
+                    '...rrrrr...',
+                    '..rkkkkkd..',
+                    '.rkkKKKkkd.',
+                    '.rkKKKKKkd.',
+                    'rkKKKKKKKkd',
+                    'rkKKKKKKKkd',
+                    'rkKKKKKKKkd',
+                    'rkKKKKKKKkd',
+                    'rkKKKKKKKkd',
+                    'rkkKKKKKkkd'
+                ], { r: '#6a4634', d: '#21130c', k: '#160c08', K: '#070403' });
             });
+        }
 
-            // 5. Brick Fireplace & Crackling Hearth (Right side x: 256..312, y: 66..136)
-            // Chimney breast
-            pxRect(ctx, 260, 0, 50, 68, '#4a2e23');
-            // Brick fireplace body
-            pxRect(ctx, 254, 68, 60, 68, '#7f2d1e');
-            // Brick pattern lines
-            for (let by = 72; by < 134; by += 6) {
-                pxRect(ctx, 254, by, 60, 1, '#5c1f14');
+        function paintFloor(P) {
+            const TONES = ['#6e4730', '#754d34', '#69432d', '#7a523a', '#6b452f'];
+            const GAP = '#3a2315';
+            for (let y0 = 135; y0 < H; y0 += 7) {
+                const off = (y0 * 19) % 45;
+                for (let jx = off - 45, n = 0; jx < W; jx += 45, n++) {
+                    const base = TONES[Math.floor(hash2(n, y0, 3) * TONES.length)];
+                    const hi = shade(base, 0.16), lit = shade(base, 0.08), gd = shade(base, -0.13), gl = shade(base, 0.06);
+                    const seed = y0 * 7 + n;
+                    for (let y = y0; y < Math.min(H, y0 + 7); y++) {
+                        const shift = Math.floor(hash2(y, n, seed) * 30);
+                        for (let x = Math.max(0, jx); x < Math.min(W, jx + 45); x++) {
+                            let col;
+                            if (y === y0 || x === jx) col = GAP;                    // gaps between the boards
+                            else if (y === y0 + 1) col = hi;                        // lit front edge of the board above
+                            else if (x === jx + 1) col = lit;
+                            else {
+                                const g = hash2(Math.floor((x + shift) / 7), y, seed);
+                                col = g < 0.22 ? gd : g > 0.92 ? gl : base;
+                            }
+                            P.set(x, y, col);
+                        }
+                    }
+                    // a knot now and then, and nail heads by the joints
+                    if (hash2(n, y0, 9) < 0.35) {
+                        const kx = jx + 8 + Math.floor(hash2(n, y0, 10) * 28), ky = y0 + 3;
+                        P.set(kx, ky, shade(base, -0.35)); P.set(kx + 1, ky, shade(base, -0.25)); P.set(kx - 1, ky, gd);
+                        P.set(kx, ky + 1, gd);
+                    }
+                    P.set(jx + 2, y0 + 2, '#3f2a1e'); P.set(jx + 2, y0 + 5, '#3f2a1e');
+                }
             }
-            // Wood Mantelpiece
-            pxRect(ctx, 250, 64, 66, 5, '#3b2316');
-            pxRect(ctx, 252, 69, 62, 2, '#24150e');
-            // (the candle and golden cat statue on the mantel are drawn with the other knockables)
-            // Little record player: spins (and sends up music notes) while the music plays
+            // Darker in the shadow of the skirting, and towards the front
+            P.fade(0, 135, W, 8, -0.32);
+            for (let j = 0; j < 10; j++) P.tint(0, H - 1 - j, W, 1, -0.14, 1 - j / 10);
+            // The window's daylight lies across the boards in front of the sofa
+            for (let j = 0; j < 8; j++) P.tint(72 + j, 143 + j, 100 - j * 2, 1, 0.06, 0.5 - j * 0.05);
+        }
+
+        function paintCobweb(P) {
+            const col = '#a7a39f';
+            for (let i = 0; i <= 16; i++) {
+                P.set(i, 0, col, 0.45); P.set(0, i, col, 0.45);
+                if (i <= 12) P.set(i, i, col, 0.45);
+            }
+            [5, 10, 15].forEach(r => {
+                for (let a = 0; a <= 1.0001; a += 0.06) {
+                    const ang = a * Math.PI / 2, sag = Math.sin(a * Math.PI) * r * 0.12;
+                    P.set(Math.round(Math.cos(ang) * r + sag), Math.round(Math.sin(ang) * r + sag), col, 0.45);
+                }
+            });
+            for (let y = 0; y < 7; y++) P.set(10, y, col, 0.45);
+            P.map(8, 6, ['.k.k', 'kKKk', '.KK.', 'k..k'], { k: '#141018', K: '#2b2533' });   // a tiny (friendly) spider
+            P.set(9, 7, '#e05a5a');
+        }
+
+        function paintWindow(P) {
+            const { x: wx, y: wy, w: ww, h: wh } = WIN;
+            const DEEP = '#1c110b', DARK = '#2e1c13', BASE = '#3e271b', LIT = '#563726', HI = '#714b35';
+            // frame
+            P.rect(wx - 4, wy - 4, ww + 8, 1, HI);
+            P.rect(wx - 4, wy - 3, ww + 8, 2, LIT);
+            P.rect(wx - 4, wy - 1, ww + 8, 1, DEEP);
+            P.rect(wx - 4, wy, 1, wh, DARK);
+            P.rect(wx - 3, wy, 1, wh, HI);
+            P.rect(wx - 2, wy, 1, wh, LIT);
+            P.rect(wx - 1, wy, 1, wh, DEEP);
+            P.rect(wx + ww, wy, 1, wh, LIT);
+            P.rect(wx + ww + 1, wy, 2, wh, BASE);
+            P.rect(wx + ww + 3, wy, 1, wh, DEEP);
+            // glazing bars
+            const mx = wx + ww / 2 - 1, my = wy + wh / 2 - 1;
+            P.rect(wx, my, ww, 1, LIT); P.rect(wx, my + 1, ww, 1, BASE); P.rect(wx, my + 2, ww, 1, DEEP);
+            P.rect(mx, wy, 1, wh, LIT); P.rect(mx + 1, wy, 1, wh, BASE); P.rect(mx + 2, wy, 1, wh, DEEP);
+            P.set(mx, my, HI); P.set(mx + 1, my + 1, LIT);
+            // Velvet curtains, folded: deep shadow in the recesses, sheen on the ridges,
+            // and a little more light on the side facing the window
+            const R = ramp('#991b1b', [-0.55, -0.34, -0.17, 0, 0.17, 0.33]);
+            [[wx - 10, [1, 3, 4, 3, 1, 2, 4, 5, 3]], [wx + ww + 1, [3, 5, 4, 2, 1, 3, 4, 3, 1]]].forEach(([cx, folds], side) => {
+                const C = painter(9, 80);
+                for (let i = 0; i < 9; i++) {
+                    const k = folds[i], len = k <= 1 ? 79 : 80;              // the recesses hang a pixel shorter
+                    for (let j = 0; j < len; j++) {
+                        let kk = k;
+                        if (j < 3) kk = Math.max(0, k - 2);                  // gathered up under the rod
+                        else if (j < 7 && k > 2) kk = k - 1;
+                        if (j === 75 || j === 76) kk = Math.min(5, kk + 1);  // the hem
+                        if (kk >= 4 && hash2(i, j, 40 + side) < 0.08) kk = 5;  // velvet sheen
+                        C.set(i, j, R[kk]);
+                    }
+                    if (i % 3 === 1) C.set(i, 0, '#b08a3a');                 // curtain rings
+                }
+                for (let j = 0; j < 16; j++) C.tint(0, 64 + j, 9, 1, -0.18, j / 16);   // darker towards the floor
+                C.outline(-0.6);
+                stamp(P, C, cx - 1, wy - 3, [2, 2, -0.3, true]);
+            });
+            // Curtain rod with brass finials and brackets
+            P.rect(wx - 13, wy - 5, ww + 26, 1, '#5b4a40');
+            P.rect(wx - 13, wy - 4, ww + 26, 1, '#1e140f');
+            const FIN = ['.hb.', 'hbbd', 'bbdd', '.dd.'], FP = { h: '#f6d27a', b: '#c4902e', d: '#7a4f14' };
+            P.map(wx - 17, wy - 7, FIN, FP);
+            P.map(wx + ww + 13, wy - 7, FIN, FP);
+            P.rect(wx - 9, wy - 3, 2, 2, '#2a1b14'); P.rect(wx + ww + 7, wy - 3, 2, 2, '#2a1b14');
+            P.tint(wx - 13, wy - 3, ww + 26, 1, -0.3);
+            // The deep windowsill (cats sit on it), with little corbels underneath
+            const S = painter(ww + 16, 8);
+            S.rect(0, 0, ww + 16, 1, '#b5845f');
+            woodFill(S, 0, 1, ww + 16, 3, '#8a5c41', 7, -0.12, 0.08, 7);
+            S.rect(0, 4, ww + 16, 1, '#5e3d2a');
+            S.rect(2, 5, ww + 12, 1, '#4a2f20');
+            S.rect(2, 6, ww + 12, 1, '#3a2418');
+            S.rect(2, 7, ww + 12, 1, '#26170f');
+            S.outline(-0.6);
+            stamp(P, S, wx - 8, wy + wh, [1, 2, -0.35, true]);
+            [[wx - 4], [wx + ww + 1]].forEach(([cx]) => {
+                P.map(cx, wy + wh + 8, ['hbbd', '.hbd', '..bd', '...d'], { h: '#6a4634', b: '#4a2f20', d: '#24150e' });
+            });
+        }
+
+        function paintShelf(P) {
+            // the plank and its brackets
+            const S = painter(64, 30), ox = 178, oy = 28;      // piece covers x 178.., y 28..
+            S.rect(2, 18, 58, 1, '#6e4a35');
+            woodFill(S, 2, 19, 58, 2, '#4a2f20', 3, -0.12, 0.07, 6);
+            S.rect(2, 21, 58, 1, '#24170f');
+            [6, 52].forEach(bx => S.map(bx, 22, ['hdd', 'hd.', 'h..', 'd..'], { h: '#5a3a28', d: '#2a1a11' }));
+            // books, each with a lit edge, shaded spine and gilt bands
+            const BOOKS = ['#b8322a', '#2f5fb3', '#c27a1e', '#2f8a4e', '#7d3fa6', '#2a7aa8'];
+            for (let i = 0; i < 6; i++) {
+                const bh = 9 + (i % 3) * 2, bx = 6 + i * 5, top = 18 - bh, base = BOOKS[i];
+                const [d2, d1, b, l1] = ramp(base, [-0.45, -0.22, 0, 0.25]);
+                for (let j = 0; j < bh; j++) {
+                    S.set(bx, top + j, l1); S.set(bx + 1, top + j, b); S.set(bx + 2, top + j, b); S.set(bx + 3, top + j, d1);
+                }
+                S.rect(bx, top, 4, 1, shade(base, 0.12));
+                S.set(bx + 3, top, d1);
+                [2, bh - 3].forEach(j => { S.rect(bx, top + j, 4, 1, '#e0b84c'); S.set(bx + 3, top + j, '#a9842e'); });
+                S.rect(bx + 1, top + Math.floor(bh / 2) - 1, 2, 2, d2);      // the title label
+                S.set(bx + 1, top + Math.floor(bh / 2) - 1, shade(base, 0.35));
+            }
+            // terracotta pot
+            S.map(43, 7, [
+                'hhhhbbbbbbdd',
+                'hbbbbbbbbddd',
+                '.kkkkkkkkkk.',
+                '.hbbbbbbbdd.',
+                '.hbbbbbbbdd.',
+                '.hhbbbbbbdd.',
+                '.hbbbbbbbdd.',
+                '.hbbbbbbddd.',
+                '..bbbbbbdd..',
+                '..bbbbbbdd..',
+                '...dddddd...'
+            ], { h: '#ec8a4a', b: '#c2502a', d: '#8a3418', k: '#5a200e' });
+            // a pothos tumbling over the edge: vines, then heart-shaped leaves
+            const G = { s: '#1d5a33', l: '#7fd07a', g: '#3fa152', m: '#2a7f43', d: '#195a34' };
+            const VINE = [[48, 7], [46, 4], [42, 5], [44, 3], [48, 7], [50, 4], [54, 8], [56, 13], [55, 19], [57, 25], [55, 29], [55, 19], [52, 21]];
+            for (let i = 1; i < VINE.length; i++) {
+                const [x0, y0] = VINE[i - 1], [x1, y1] = VINE[i], n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+                for (let k = 0; k <= n; k++) S.set(Math.round(x0 + (x1 - x0) * k / n), Math.round(y0 + (y1 - y0) * k / n), G.s);
+            }
+            [[42, 5], [46, 3], [50, 4], [54, 8], [56, 13], [55, 19], [57, 25], [55, 29], [52, 21]].forEach(([lx, ly], i) => {
+                S.map(lx - 1, ly - 1, i % 2 ? ['.lg.', 'lggm', 'gmmd', '.md.'] : ['.gl.', 'gglm', 'mggd', '.dd.'], G);
+            });
+            S.outline(-0.65);
+            stamp(P, S, ox, oy, [1, 2, -0.32, true]);
+        }
+
+        function paintFireplace(P) {
+            // Chimney breast: plaster, lit on its left edge, its right side in shadow
+            for (let y = 0; y < 68; y++) for (let x = 260; x < 310; x++) {
+                const n = hash2(x, y, 77);
+                P.set(x, y, n < 0.06 ? '#432a20' : n > 0.95 ? '#523428' : '#4a2e23');
+            }
+            P.rect(260, 0, 50, 5, '#3a2419');
+            P.rect(260, 2, 50, 1, '#5e3e2c');
+            P.rect(260, 5, 1, 63, '#5a3a2c'); P.rect(261, 5, 1, 63, '#523428');
+            P.rect(308, 5, 1, 63, '#3a2419'); P.rect(309, 5, 1, 63, '#2c1a12');
+            for (let j = 0; j < 16; j++) P.tint(262, 5 + j, 46, 1, -0.26, 1 - j / 16);
+            P.fade(310, 5, 4, 63, -0.3);
+            for (let i = 0; i < 4; i++) P.tint(310 + i, 5, 1, 130, -0.3, 1 - i / 4);   // the breast's shadow on the wall
+            // Brickwork: each brick its own colour, lit along the top, a little sooty here and there
+            const BR = ['#7a2b1d', '#86321f', '#8f3a25', '#702618', '#9a4430', '#7f2d1e'];
+            const MORTAR = '#4a2c23', MORTAR_LIT = '#5d3a2e';
+            for (let row = 0; row * 5 < 68; row++) {
+                const y0 = 68 + row * 5, offs = row % 2 ? 4 : 0;
+                for (let bx = 254 - offs - 9; bx < 314; bx += 9) {
+                    const base = BR[Math.floor(hash2(bx, row, 12) * BR.length)];
+                    const hi = shade(base, 0.16), lo = shade(base, -0.18), sp = shade(base, -0.32);
+                    for (let y = y0; y < Math.min(136, y0 + 5); y++) for (let x = Math.max(254, bx); x < Math.min(314, bx + 9); x++) {
+                        let col;
+                        if (y === y0 + 4) col = y === y0 + 4 && x % 3 === 0 ? MORTAR_LIT : MORTAR;
+                        else if (x === bx + 8) col = MORTAR;
+                        else if (y === y0) col = hi;
+                        else if (y === y0 + 3 || x === bx + 7) col = lo;
+                        else col = hash2(x, y, 13) < 0.07 ? sp : base;
+                        P.set(x, y, col);
+                    }
+                }
+            }
+            P.rect(254, 68, 1, 68, '#a04a34');                 // the lit left edge of the fireplace...
+            P.tint(312, 68, 2, 68, -0.32);                     // ...and its shaded right side
+            P.tint(254, 71, 60, 3, -0.3);                      // shadow under the mantel
+            // A soldier course of bricks over the opening
+            for (let x = 264; x < 304; x += 3) {
+                const base = BR[Math.floor(hash2(x, 3, 14) * BR.length)];
+                P.rect(x, 89, 2, 6, base); P.rect(x, 89, 2, 1, shade(base, 0.18)); P.rect(x + 1, 90, 1, 5, shade(base, -0.15));
+                P.rect(x + 2, 89, 1, 6, MORTAR);
+            }
+            P.rect(264, 95, 40, 1, '#3a2019');
+            // The firebox: fire-brick at the back, blackened with soot towards the top, splayed sides
+            for (let y = 96; y < 134; y++) for (let x = 266; x < 302; x++) {
+                const r = Math.floor((y - 96) / 3), c = Math.floor((x - 266 + (r % 2) * 3) / 6);
+                const mortar = (y - 96) % 3 === 2 || (x - 266 + (r % 2) * 3) % 6 === 5;
+                let col = mortar ? '#1a0d09' : hash2(c, r, 15) < 0.5 ? '#2c1611' : '#33190f';
+                if (x < 270) col = mortar ? '#21110c' : '#3b2016';            // left splay catches a little light
+                if (x > 297) col = mortar ? '#120806' : '#21110b';            // right splay in shadow
+                P.set(x, y, col);
+            }
+            for (let j = 0; j < 22; j++) P.tint(266, 96 + j, 36, 1, -0.55, 1 - j / 22);
+            P.erase(266, 96, 1, 1); P.erase(301, 96, 1, 1);
+            P.rect(266, 96, 1, 1, '#3a2019'); P.rect(301, 96, 1, 1, '#3a2019');
+            // ash on the floor of the firebox
+            for (let x = 266; x < 302; x++) { P.set(x, 133, hash2(x, 1, 16) < 0.3 ? '#5b504a' : '#3a302c'); P.set(x, 132, hash2(x, 2, 16) < 0.2 ? '#4a403b' : '#2a201c'); }
+            // Logs on iron fire-dogs: bark, and pale end grain
+            const L = painter(30, 10);
+            const bark = ['#2a1406', '#45210a', '#5c2d0e', '#7a3f16'];
+            for (let x = 4; x < 20; x++) for (let y = 0; y < 4; y++) L.set(x, y, bark[[3, 2, 1, 0][y] - (hash2(x, y, 17) < 0.25 ? 1 : 0)] || bark[0]);
+            for (let x = 0; x < 24; x++) for (let y = 3; y < 8; y++) L.set(x, y, bark[[3, 2, 2, 1, 0][y - 3] - (hash2(x, y, 18) < 0.25 ? 1 : 0)] || bark[0]);
+            L.map(0, 3, ['.ee.', 'eRRe', 'eRre', 'eRRe', '.ee.'], { e: '#8a6440', R: '#c49a68', r: '#7a5030' });
+            L.outline(-0.7);
+            stamp(P, L, 272, 124, null);
+            [[269], [297]].forEach(([dx]) => P.map(dx, 125, ['.h.', 'hbd', '.b.', '.b.', '.b.', '.b.', 'bbd', 'b.d'], { h: '#6a6672', b: '#2b2930', d: '#121116' }));
+            // Stone hearth slab
+            const ST = '#4f4440';
+            for (let x = 250; x < 316; x++) for (let y = 134; y < 139; y++) {
+                const n = hash2(x, y, 19);
+                let col = y === 134 ? '#6e605a' : y === 135 ? '#5b4f4a' : y === 138 ? '#2c2421' : n < 0.12 ? '#433936' : n > 0.92 ? '#62564f' : ST;
+                if ((x - 250) % 22 === 21 && y > 134) col = '#2f2724';
+                P.set(x, y, col);
+            }
+            P.fade(250, 139, 66, 4, -0.4);
+            // Oak mantel beam with corbels
+            const M = painter(68, 12);
+            M.rect(1, 0, 66, 1, '#80553a');
+            woodFill(M, 1, 1, 66, 3, '#5a3824', 22, -0.13, 0.08, 9);
+            M.rect(1, 4, 66, 1, '#3b2316');
+            M.rect(3, 5, 62, 1, '#2a1810'); M.rect(3, 6, 62, 1, '#1d110a');
+            [[5], [57]].forEach(([cx]) => M.map(cx, 7, ['hbbd', 'hbbd', '.hbd', '..bd', '...d'], { h: '#6e4a35', b: '#4a2c1b', d: '#24150e' }));
+            M.outline(-0.65);
+            stamp(P, M, 249, 64, [1, 2, -0.3, true]);
+        }
+
+        function paintSteps(P) {
+            // Floating cat steps up the wall to the mantelpiece, with sisal pads on top
+            [[217, 241, 120], [230, 251, 92]].forEach(([x1, x2, y]) => {
+                const w = x2 - x1, S = painter(w, 10);
+                for (let x = 0; x < w; x++) S.set(x, 0, x < 2 || x >= w - 2 ? '#a07052' : (x % 2 ? '#d8c49e' : '#bea57c'));
+                S.rect(0, 1, w, 1, '#946446');
+                S.rect(0, 2, w, 1, '#7c533b');
+                S.rect(0, 3, w, 1, '#4a2f20');
+                [[3], [w - 5]].forEach(([bx]) => S.map(bx, 4, ['hd', 'hd', 'hd', 'hd', '.d'], { h: '#4a2f20', d: '#24150e' }));
+                S.outline(-0.6);
+                stamp(P, S, x1, y - 1, [1, 2, -0.3, true]);
+            });
+        }
+
+        function paintCatTree(P) {
+            const T = painter(56, 100), ox = 8, oy = 52;      // piece covers x 8..63, y 52..151
+            const C = ramp('#a88b73', [-0.48, -0.32, -0.18, 0, 0.1, 0.22, 0.34]);   // carpet
+            const S = ramp('#b89b72', [-0.5, -0.32, -0.15, 0, 0.14, 0.28]);         // sisal rope
+            const q = (x, y) => [x - ox, y - oy];
+            // Sisal posts, wound in a twisting coil and shaded round like a cylinder
+            const POST = [1, 2, 3, 4, 3, 2, 1, 0];
+            const post = (x0, y0, y1) => {
+                for (let y = y0; y < y1; y++) for (let i = 0; i < 8; i++) {
+                    const k = (y + Math.floor(i / 2)) % 3;
+                    const idx = clamp(POST[i] + (k === 0 ? -1 : k === 2 ? 1 : 0), 0, 5);
+                    T.set(...q(x0 + i, y), S[idx]);
+                }
+            };
+            post(24, 98, 140);
+            post(40, 62, 140);
+            // Base board
+            fuzzFill(T, ...q(12, 141), 48, 5, C[3], 1);
+            T.rect(...q(12, 140), 48, 1, C[5]);
+            T.rect(...q(12, 146), 48, 1, C[1]);
+            T.rect(...q(13, 147), 46, 1, C[0]);
+            T.rect(...q(12, 140), 1, 7, C[4]);
+            for (let x = 13; x < 59; x += 3) if (hash2(x, 1, 2) < 0.6) T.set(...q(x, 139), C[4]);   // tufts
+            // Cat house, with its arched doorway
+            fuzzFill(T, ...q(32, 115), 24, 25, C[3], 3);
+            T.rect(...q(32, 114), 24, 1, C[6]);
+            T.rect(...q(32, 115), 24, 1, C[5]);
+            T.rect(...q(32, 115), 1, 25, C[4]);
+            T.rect(...q(54, 115), 1, 25, C[2]); T.rect(...q(55, 115), 1, 25, C[1]);
+            const DOOR = [[41, 46], [39, 48], [38, 49]];
+            for (let y = 120; y < 140; y++) {
+                const [a, b] = DOOR[Math.min(2, y - 120)];
+                for (let x = a; x <= b; x++) T.set(...q(x, y), dith(x, y, (y - 120) / 30) ? '#1f150e' : '#130c08');
+                T.set(...q(a - 1, y), C[1]); T.set(...q(b + 1, y), C[5]);       // the rim: shaded left, lit right
+            }
+            for (let x = 41; x <= 46; x++) T.set(...q(x, 119), C[1]);
+            T.set(...q(40, 120), C[1]); T.set(...q(47, 120), C[1]);
+            // Middle perch
+            fuzzFill(T, ...q(14, 98), 30, 3, C[3], 4);
+            T.rect(...q(15, 96), 28, 1, C[6]); T.rect(...q(14, 97), 30, 1, C[5]);
+            T.rect(...q(14, 100), 30, 1, C[1]); T.rect(...q(15, 101), 28, 1, C[0]);
+            // Top bed, with a bolster at each end
+            fuzzFill(T, ...q(28, 59), 28, 4, C[3], 5);
+            T.rect(...q(28, 58), 28, 1, C[5]);
+            T.rect(...q(28, 63), 28, 1, C[1]); T.rect(...q(29, 64), 26, 1, C[0]);
+            [26, 54].forEach(bx => {
+                T.map(...q(bx, 55), ['.hh.', 'hlbb', 'lbbd', 'lbbd', 'bbbd', 'bbdd'], { h: C[6], l: C[5], b: C[4], d: C[2] });
+            });
+            T.outline(-0.72);
+            stamp(P, T, ox, oy, [2, 1, -0.28, true]);
+            P.fade(10, 148, 54, 3, -0.4);
+        }
+
+        function paintSofa(P) {
+            const V = ramp('#2b5847', [-0.62, -0.46, -0.3, -0.15, 0, 0.16, 0.3, 0.44]);   // V[4] is the velvet itself
+            const S = painter(84, 44), ox = 80, oy = 100;
+            const q = (x, y) => [x - ox, y - oy];
+            // Back, rolled along the top, buttoned in a diamond pattern
+            T_rect(S, q, 88, 106, 68, 22, V[4]);
+            for (let x = 89; x < 155; x++) S.set(...q(x, 102), V[6]);
+            T_rect(S, q, 88, 103, 68, 1, V[5]);
+            T_rect(S, q, 88, 104, 68, 1, V[5]);
+            T_rect(S, q, 88, 105, 68, 1, V[3]);
+            [[109, 0], [115, 4]].forEach(([by, off]) => {
+                for (let bx = 92 + off; bx < 154; bx += 8) {
+                    S.set(...q(bx, by), V[1]); S.set(...q(bx - 1, by - 1), V[6]);
+                    for (let k = 1; k < 4; k++) {                  // the creases between the buttons
+                        S.set(...q(bx - k, by + k), V[3]); S.set(...q(bx + k, by + k), V[3]);
+                        S.set(...q(bx - k, by - k), V[3]); S.set(...q(bx + k, by - k), V[3]);
+                    }
+                }
+            });
+            for (let bx = 92; bx < 154; bx += 8) for (let y = 106; y < 108; y++) S.set(...q(bx, y), V[3]);
+            S.tint(...q(88, 117), 68, 5, -0.2, 0.5);
+            // Rolled arms
+            [82, 150].forEach((ax, side) => {
+                T_rect(S, q, ax, 116, 12, 23, V[4]);
+                for (let x = ax + 1; x < ax + 11; x++) S.set(...q(x, 111), V[6]);
+                T_rect(S, q, ax, 112, 12, 2, V[5]);
+                T_rect(S, q, ax, 114, 12, 1, V[4]);
+                T_rect(S, q, ax, 115, 12, 1, V[2]);
+                S.map(...q(ax + 3, 111), ['.ss.', 'sLbs', 'sbds', '.ss.'], { s: V[3], L: V[6], b: V[5], d: V[2] });   // the scroll
+                T_rect(S, q, ax, 116, 1, 23, side ? V[4] : V[5]);
+                T_rect(S, q, ax + 11, 116, 1, 23, V[2]);
+                T_rect(S, q, ax + 1, 117, 1, 21, V[6]);       // piping
+                T_rect(S, q, ax + 10, 117, 1, 21, V[3]);
+                S.tint(...q(ax, 130), 12, 9, -0.22, 0.5);
+                T_rect(S, q, ax, 138, 12, 1, V[1]);
+            });
+            // Seat cushions
+            [[92, 29], [123, 29]].forEach(([cx, cw]) => {
+                for (let x = cx + 1; x < cx + cw - 1; x++) S.set(...q(x, 122), V[6]);
+                T_rect(S, q, cx, 123, cw, 2, V[5]);
+                T_rect(S, q, cx, 125, cw, 1, V[6]);
+                T_rect(S, q, cx, 126, cw, 8, V[4]);
+                S.tint(...q(cx, 130), cw, 4, -0.2, 0.5);
+                T_rect(S, q, cx, 134, cw, 1, V[3]);
+                T_rect(S, q, cx, 135, cw, 1, V[2]);
+                T_rect(S, q, cx + cw - 1, 123, 1, 12, V[3]);
+                T_rect(S, q, cx, 123, 1, 12, V[5]);
+            });
+            T_rect(S, q, 121, 122, 2, 14, V[1]);
+            // The dark gap underneath (a favourite hiding place), and turned wooden feet
+            T_rect(S, q, 94, 136, 56, 4, '#140c08');
+            T_rect(S, q, 94, 136, 56, 1, '#0a0604');
+            [85, 155].forEach(fx => S.map(...q(fx, 139), ['hbbd', '.bd.', '.bd.', 'hbbd'], { h: '#6b4632', b: '#3b2414', d: '#1a0f08' }));
+            // A knitted throw over the back and down the seat: coral border, cream with coral stripes, fringe
+            for (let y = 112; y < 136; y++) for (let x = 134; x < 148; x++) {
+                const border = x < 136 || x > 145;
+                const stripe = !border && (y - 112) % 6 >= 4;
+                let base = border || stripe ? '#e07a5f' : '#f2cc8f';
+                if ((x + y) % 2 === 0) base = shade(base, -0.07);            // knit stitches
+                if (x === 134) base = shade(base, 0.18);
+                if (x >= 146) base = shade(base, -0.2);
+                if (y >= 121 && y <= 122) base = shade(base, y === 121 ? 0.2 : -0.25);   // folded over the seat edge
+                S.set(...q(x, y), base);
+            }
+            for (let x = 135; x < 147; x += 2) { S.set(...q(x, 136), '#f2cc8f'); S.set(...q(x, 137), '#d9ae72'); }
+            S.outline(-0.75);
+            stamp(P, S, ox, oy, [1, 1, -0.25, false]);
+            P.fade(82, 143, 82, 3, -0.45);
+        }
+        function T_rect(S, q, x, y, w, h, col) { const [a, b] = q(x, y); S.rect(a, b, w, h, col); }
+
+        function paintPlant(P) {
+            // A monstera in a glazed amber pot
+            const S = painter(34, 40), ox = 184, oy = 104;
+            const q = (x, y) => [x - ox, y - oy];
+            const G = ramp('#1f8a45', [-0.55, -0.35, -0.15, 0, 0.18, 0.36]);
+            const stems = [[201, 126, 191, 120], [201, 126, 200, 114], [201, 126, 208, 121], [201, 126, 196, 123], [201, 126, 205, 112]];
+            stems.forEach(([x0, y0, x1, y1]) => {
+                const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+                for (let k = 0; k <= n; k++) S.set(...q(Math.round(x0 + (x1 - x0) * k / n), Math.round(y0 + (y1 - y0) * k / n)), G[1]);
+            });
+            // each leaf: a fat oval with splits cut in from the edge, lit on its upper side, a pale midrib
+            const leaf = (cx, cy, rx, ry, ang, seed) => {
+                const ca = Math.cos(ang), sa = Math.sin(ang);
+                for (let y = Math.floor(cy - rx - 1); y <= cy + rx + 1; y++) for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++) {
+                    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+                    const e = (u / rx) ** 2 + (v / ry) ** 2;
+                    if (e > 1) continue;
+                    const slot = ((u / rx + 1) * 2.2 + seed) % 1;
+                    if (Math.abs(v) > ry * 0.45 && slot > 0.42 && slot < 0.58) continue;      // the splits
+                    let k = v < 0 ? 4 : 2;
+                    if (Math.abs(v) < 0.6 && u > -rx * 0.8) k = 5;                        // midrib
+                    else if (e > 0.62) k = v < 0 ? 3 : 1;                                 // darker round the edge
+                    if (u < -rx * 0.5 && k > 1) k--;
+                    S.set(...q(x, y), G[k]);
+                }
+            };
+            leaf(191, 119, 5.2, 3.6, 0.5, 0.1);
+            leaf(205, 112, 5, 3.4, -0.9, 0.3);
+            leaf(200, 112, 5.6, 4, -1.7, 0.6);
+            leaf(208, 120, 5, 3.6, -0.3, 0.2);
+            leaf(196, 122, 4.4, 3, 2.7, 0.8);
+            // the pot
+            S.map(...q(192, 126), [
+                'hhhhhbbbbbbbbbddkk',
+                'hlllbbbbbbbbbbbddk',
+                'kkkkkkkkkkkkkkkkkk',
+                '..hlbbbbbbbbbbdd..',
+                '..hlbbbbbbbbbbdd..',
+                '..hlbbbbbbbbbbdd..',
+                '..hgagagagagagad..',
+                '..hlbbbbbbbbbbdd..',
+                '..hlbbbbbbbbbbdd..',
+                '..hlbbbbbbbbbbdd..',
+                '..hlbbbbbbbbbddd..',
+                '...lbbbbbbbbbdd...',
+                '...lbbbbbbbbbdd...',
+                '...bbbbbbbbbbdd...',
+                '....dddddddddd....'
+            ], { h: '#f6b55a', l: '#e09a3e', b: '#c26f1e', d: '#8a4410', k: '#5a2a08', g: '#9a4f12', a: '#e6c27a' });
+            S.outline(-0.75);
+            stamp(P, S, ox, oy, [2, 1, -0.28, true]);
+            P.fade(190, 141, 22, 3, -0.45);
+        }
+
+        function paintRugs(P) {
+            // The big patterned rug: borders, a guard stripe, a running motif, and a medallion field
+            const x0 = 74, y0 = 150, w = 150, h = 31;
+            const RED = '#7c2d12', RUST = '#a3401a', GOLD = '#d8a64a', GOLD_D = '#b07a2a', NAVY = '#1e3a8a', NAVY_D = '#16296a',
+                  CREAM = '#fef3c7', CREAM_D = '#f1e0b2', AMBER = '#b45309';
+            for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
+                const e = Math.min(x - x0, x0 + w - 1 - x, y - y0, y0 + h - 1 - y);   // how far in from the edge
+                let col;
+                if (e < 2) col = RED;
+                else if (e === 2) col = GOLD;
+                else if (e < 6) {
+                    // the border band: little diamonds running round
+                    const along = (y - y0 === e || y0 + h - 1 - y === e) ? x : y * 2;
+                    const m = (y === y0 + 4 || y === y0 + h - 5 || x === x0 + 4 || x === x0 + w - 5) && ((along >> 1) % 3 === 0);
+                    col = m ? CREAM : (e === 4 ? NAVY : NAVY_D);
+                } else if (e === 6) col = GOLD_D;
+                else {
+                    // the field: a big central medallion and corner spandrels on cream
+                    const cx = x0 + w / 2 - 0.5, cy = y0 + h / 2 - 0.5;
+                    const md = Math.abs(x - cx) / 3 + Math.abs(y - cy);              // diamond 'distance' (squashed: it's on the floor)
+                    const cd = Math.min(Math.abs(x - (x0 + 7)) / 3 + Math.abs(y - (y0 + 7)), Math.abs(x - (x0 + w - 8)) / 3 + Math.abs(y - (y0 + 7)),
+                                        Math.abs(x - (x0 + 7)) / 3 + Math.abs(y - (y0 + h - 8)), Math.abs(x - (x0 + w - 8)) / 3 + Math.abs(y - (y0 + h - 8)));
+                    if (md < 2) col = GOLD;
+                    else if (md < 3.5) col = NAVY;
+                    else if (md < 5) col = RUST;
+                    else if (md < 6.2) col = AMBER;
+                    else if (md < 7) col = CREAM_D;
+                    else if (cd < 4.5) col = cd < 2.5 ? NAVY : RUST;
+                    else {
+                        // a scatter of small rust-and-navy motifs
+                        const gx = ((x - x0) % 14 + 14) % 14, gy = (y - y0 + ((Math.floor((x - x0) / 14) % 2) ? 4 : 0)) % 8;
+                        col = (gx === 7 && gy >= 3 && gy <= 5) || (gy === 4 && gx >= 6 && gx <= 8) ? (gx === 7 && gy === 4 ? NAVY : RUST) : CREAM;
+                        if (col === CREAM && (x + y * 3) % 7 === 0) col = CREAM_D;   // a soft woven look
+                    }
+                }
+                P.set(x, y, col);
+            }
+            P.tint(x0, y0 + h - 1, w, 1, -0.2);
+            P.fade(x0, y0 + h, w, 2, -0.4);
+            // Fringe: knotted threads at each end
+            for (let y = y0 + 1; y < y0 + h - 1; y += 2) {
+                const len = 3 + (hash2(y, 0, 31) < 0.5 ? 1 : 0), len2 = 3 + (hash2(y, 1, 31) < 0.5 ? 1 : 0);
+                for (let i = 0; i < len; i++) P.set(x0 - 1 - i, y, i === len - 1 ? '#fff6dc' : '#ecd9a8');
+                for (let i = 0; i < len2; i++) P.set(x0 + w + i, y, i === len2 - 1 ? '#fff6dc' : '#d9c48e');
+                P.set(x0 - 1, y + 1, '#b8a170'); P.set(x0 + w, y + 1, '#a8925f');
+            }
+            // The hearth rug: a braided rag rug in reds, a band of cream, a patterned middle
+            const hx = 238, hy = 154, hw = 52, hh = 20;
+            for (let y = hy; y < hy + hh; y++) for (let x = hx; x < hx + hw; x++) {
+                const e = Math.min(x - hx, hx + hw - 1 - x, y - hy, hy + hh - 1 - y);
+                const corner = (x - hx < 2 || hx + hw - 1 - x < 2) && (y - hy < 2 || hy + hh - 1 - y < 2);
+                if (corner && Math.min(x - hx, hx + hw - 1 - x) + Math.min(y - hy, hy + hh - 1 - y) < 1) continue;   // rounded corners
+                let col;
+                if (e === 0) col = '#6e1414';
+                else if (e < 3) col = ((x + y * (e === 1 ? 1 : -1)) & 2) ? '#c2412f' : '#8a1c1c';      // the braid
+                else if (e === 3) col = '#f2cc8f';
+                else {
+                    const dx = Math.abs(x - (hx + hw / 2 - 0.5)), dy = Math.abs(y - (hy + hh / 2 - 0.5)), md = dx / 2.5 + dy;
+                    const dot = (x - hx) % 8 === 4 && (y - hy) % 4 === 1;
+                    col = md < 2 ? '#f2cc8f' : md < 3.2 ? '#e07a5f' : md < 4.4 ? '#991b1b' : dot ? '#e07a5f' : '#b52a20';
+                }
+                P.set(x, y, col);
+            }
+            P.tint(hx + 1, hy + hh - 1, hw - 2, 1, -0.2);
+            P.fade(hx + 1, hy + hh, hw - 2, 2, -0.4);
+        }
+
+        function paintBowlMat(P) {
+            P.fade(217, 152, 38, 2, -0.4);
+            for (let y = 144; y < 152; y++) for (let x = 217; x < 255; x++) {
+                const edge = y === 144 || y === 151 || x === 217 || x === 254;
+                if ((x === 217 || x === 254) && (y === 144 || y === 151)) continue;
+                P.set(x, y, y === 144 ? '#7a879a' : y === 151 ? '#2f3a4a' : edge ? '#3d4a5c' : y === 145 ? '#566377' : '#475569');
+            }
+            P.map(233, 146, ['.a.a.', 'a.a.a', '.aaa.', '.aaa.'], { a: '#3d4a5c' });   // an embossed paw
+        }
+
+        // ---------- Things in the room that change, drawn every frame ----------
+        // Reflections on the glass: a shadow under the frame, a couple of diagonal glints
+        let glassArt = null;
+        function drawGlass() {
+            if (!glassArt) {
+                const G = painter(W, H);
+                WIN_PANES.forEach(([x, y, w, h], p) => {
+                    for (let i = 0; i < w; i++) G.set(x + i, y, '#000000', 0.3);
+                    for (let j = 1; j < h; j++) G.set(x, y + j, '#000000', 0.18);
+                    [[6, 3, 0.16], [11, 1, 0.1]].forEach(([o, thick, a]) => {
+                        for (let k = 0; k < Math.min(w, h); k++) for (let t = 0; t < thick; t++) {
+                            const gx = x + w - 1 - (o + k + t), gy = y + k;
+                            if (gx >= x + 1 && gy < y + h && (k + p) % 9 < 6) G.set(gx, gy, '#ffffff', a);
+                        }
+                    });
+                });
+                glassArt = G.toCanvas();
+            }
+            const night = clamp(outside.darkness / 0.36, 0, 1);
+            ctx.save();
+            ctx.globalAlpha = 0.55 + 0.45 * night;      // at night the glass shows the room's reflection more
+            ctx.drawImage(glassArt, 0, 0);
+            ctx.restore();
+        }
+
+        // The floor lamp: a pleated empire shade on a brass stand (glowing when it's on)
+        const lampArt = {};
+        function drawLamp() {
+            const key = lampLit ? 'on' : 'off';
+            if (!lampArt[key]) {
+                const S = painter(28, 74), ox = 166, oy = 70;
+                const q = (x, y) => [x - ox, y - oy];
+                const fab = lampLit ? ['#d99a3a', '#ecbd5a', '#fbdc7e', '#fff0b0', '#fffae0'] : ['#5f646d', '#7a808a', '#959ca7', '#b0b7c1', '#c8ced6'];
+                const brass = ['#5c2d06', '#8a4a0a', '#b45309', '#d97706', '#f2b84a', '#fde7a8'];
+                for (let y = 74; y < 88; y++) {
+                    const t = (y - 74) / 13, x0 = Math.round(173 - t * 4), x1 = Math.round(186 + t * 4);
+                    for (let x = x0; x <= x1; x++) {
+                        const u = (x - x0) / (x1 - x0);                      // across the shade: lit left, shaded right
+                        let k = u < 0.2 ? 3 : u < 0.6 ? 2 : u < 0.85 ? 1 : 0;
+                        if (lampLit) k = Math.min(4, k + (y > 82 ? 2 : 1));  // brighter where the bulb shines through
+                        if ((x - x0) % 3 === 2) k = Math.max(0, k - 1);      // pleats
+                        S.set(...q(x, y), fab[k]);
+                    }
+                }
+                T_rect(S, q, 173, 74, 14, 1, brass[4]); T_rect(S, q, 173, 75, 14, 1, brass[2]);
+                T_rect(S, q, 169, 86, 22, 1, brass[3]); T_rect(S, q, 169, 87, 22, 1, brass[1]);
+                S.map(...q(179, 71), ['.h', 'hb', 'bd'], { h: brass[5], b: brass[3], d: brass[1] });
+                for (let y = 88; y < 138; y++) { S.set(...q(179, y), brass[4]); S.set(...q(180, y), brass[1]); }
+                S.map(...q(178, 110), ['hbbd', 'bbdd'], { h: brass[5], b: brass[3], d: brass[1] });
+                S.map(...q(174, 136), [
+                    '.....hd.....',
+                    '....hbbd....',
+                    '...lhbbdd...',
+                    '.llhbbbbbdd.',
+                    'lhhbbbbbbddd',
+                    'kkkkkkkkkkkk'
+                ], { h: brass[5], l: brass[4], b: brass[3], d: brass[1], k: brass[0] });
+                if (lampLit) T_rect(S, q, 171, 88, 18, 1, '#fff6c8');                  // the bulb glowing under the shade
+                S.outline(-0.75);
+                lampArt[key] = S.toCanvas();
+            }
+            ctx.drawImage(lampArt[key], 166, 70);
+        }
+
+        // The record player on the mantelpiece: spins (and sends up music notes) while the music plays
+        function drawRecordPlayer() {
+            pxRect(ctx, 271, 59, 20, 1, '#24150e');
+            pxRect(ctx, 271, 60, 1, 4, '#24150e'); pxRect(ctx, 290, 60, 1, 4, '#24150e');
             pxRect(ctx, 272, 60, 18, 4, '#5b3a29');
-            pxRect(ctx, 272, 60, 18, 1, '#7a5038');
+            pxRect(ctx, 272, 60, 18, 1, '#8f6045');
+            pxRect(ctx, 272, 63, 18, 1, '#3e271b');
+            pxRect(ctx, 288, 61, 1, 2, '#c9a86a');                                 // speed knob
             pxRect(ctx, 274, 58, 11, 2, '#111827');
-            pxRect(ctx, 275, 58, 9, 1, '#1f2937');
+            pxRect(ctx, 275, 58, 9, 1, '#2b3546');
             pxRect(ctx, 279, 58, 2, 1, '#dc2626');                                 // record label
             if (music.playing) {
-                pxRect(ctx, [275, 277, 282, 283][Math.floor(globalTick / 6) % 4], 58, 1, 1, '#94a3b8'); // spinning glint
+                pxRect(ctx, [275, 277, 282, 283][Math.floor(globalTick / 6) % 4], 58, 1, 1, '#a5b4c8'); // spinning glint
                 pxRect(ctx, 287, 55, 1, 3, '#cbd5e1');                             // tone arm down on the record
                 pxRect(ctx, 284, 57, 3, 1, '#cbd5e1');
+                pxRect(ctx, 288, 55, 1, 3, '#7c8797');
                 if (globalTick % 70 === 0) spawnParticle('note', 278 + Math.random() * 6, 54);
             } else {
                 pxRect(ctx, 288, 54, 1, 5, '#cbd5e1');                             // tone arm resting
+                pxRect(ctx, 289, 54, 1, 5, '#7c8797');
             }
+        }
 
-            // Dark Firebox Interior
-            pxRect(ctx, 266, 96, 36, 40, '#180e0b');
-            pxRect(ctx, 250, 134, 66, 5, '#473c38'); // Stone hearth slab
-
-            // Logs in fireplace
-            pxRect(ctx, 272, 128, 24, 5, '#451a03');
-            pxRect(ctx, 276, 125, 16, 4, '#5c2406');
-
-            // Animated Flames when lit
-            if (fireplaceLit) {
-                fireParticles.forEach((fp, idx) => {
-                    fp.y -= fp.vy;
-                    fp.life -= 0.03;
-                    if (fp.life <= 0) {
-                        fp.x = 273 + Math.random() * 22;
-                        fp.y = 127;
-                        fp.life = 0.7 + Math.random() * 0.3;
-                    }
-                    const col = fp.life > 0.6 ? '#fef08a' : (fp.life > 0.35 ? '#f97316' : '#dc2626');
-                    const sz = fp.life > 0.4 ? 4 : 2;
-                    pxRect(ctx, fp.x, fp.y, sz, sz, col);
-                });
+        // The fire: tongues of flame shading from a white-hot core through yellow and
+        // orange to red tips, a glowing bed of embers, and sparks drifting up
+        const FLAME_RAMP = ['#fff6c8', '#fde047', '#fbb024', '#f97316', '#e04a14', '#a8200f'];
+        const FLAME_TONGUES = [[277, 3.5, 9, 0], [282, 4.5, 15, 1.7], [287, 4, 13, 3.1], [292, 3.2, 8, 4.4], [284.5, 3, 18, 2.4]];
+        function drawFire() {
+            // logs glowing along their cracks, and the coals beneath
+            const t = globalTick;
+            for (let x = 272; x < 296; x++) {
+                const n = hash2(x, Math.floor(t / 9), 3);
+                pxRect(ctx, x, 131, 1, 1, n < 0.35 ? '#ff9a3a' : n < 0.7 ? '#e0461b' : '#7a1a0c');
+                if (hash2(x, Math.floor(t / 13), 5) < 0.22) pxRect(ctx, x, 132, 1, 1, '#ffd36a');
             }
-            if (outside.festive === 'halloween') drawPumpkin();
-            if (outside.festive === 'christmas') drawStockings();
-            WALL_PORTRAITS.forEach(pt => { if (pt.chimney) drawWallPortrait(pt); });   // the newest one, above the fireplace
-
-            // Floating cat steps up the wall to the mantelpiece, with sisal pads on top
-            [[217, 241, 120], [230, 251, 92]].forEach(([x1, x2, y]) => {
-                pxRect(ctx, x1 + 3, y + 2, 2, 5, '#2c1a11');          // brackets
-                pxRect(ctx, x2 - 5, y + 2, 2, 5, '#2c1a11');
-                pxRect(ctx, x1, y - 1, x2 - x1, 4, '#7c533b');        // plank
-                pxRect(ctx, x1, y + 2, x2 - x1, 1, '#472d1e');
-                pxRect(ctx, x1 + 2, y - 1, x2 - x1 - 4, 1, '#c9b48f'); // sisal pad
+            [[278, 126], [283, 127], [289, 126], [275, 129], [286, 129], [292, 130]].forEach(([x, y], i) => {
+                pxRect(ctx, x, y, 2, 1, (Math.floor(t / 7) + i) % 3 ? '#ff7a1f' : '#ffc35a');
             });
-
-            // 6. Plush Multi-Tier Cat Tree (Left side x: 10..62, y: 55..148)
-            // Base plate
-            pxRect(ctx, 12, 140, 48, 8, '#a88b73');
-            pxRect(ctx, 12, 146, 48, 2, '#785f4a');
-            // Scratching posts (textured rope look)
-            for (let py = 62; py < 140; py += 3) {
-                const ropeCol = (py % 6 === 0) ? '#d6bc98' : '#b89b72';
-                if (py >= 98) pxRect(ctx, 24, py, 8, 3, ropeCol); // Left mid post
-                pxRect(ctx, 40, py, 8, 3, ropeCol);               // Tall right post
+            // the flames, column by column
+            const tops = [];
+            for (let x = 272; x < 297; x++) {
+                let h = 0, core = 1;
+                FLAME_TONGUES.forEach(([cx, r, hmax, ph]) => {
+                    const sway = Math.sin(t * 0.09 + ph) * 1.2;
+                    const hh = hmax * (0.78 + 0.16 * Math.sin(t * 0.23 + ph * 2) + 0.1 * hash2(Math.floor(t / 4), ph * 10, 7));
+                    const k = 1 - Math.abs(x + 0.5 - cx - sway) / r;
+                    if (k > 0 && hh * k > h) { h = hh * Math.sqrt(k); core = k; }
+                });
+                tops.push(h);
+                for (let j = 0; j < h; j++) {
+                    const f = j / h + (1 - core) * 0.35;
+                    pxRect(ctx, x, 128 - j, 1, 1, FLAME_RAMP[Math.min(5, Math.floor(f * 5.2))]);
+                }
             }
-            // Condo Box at bottom right of tree
-            pxRect(ctx, 32, 114, 24, 26, '#9c7e65');
-            pxRect(ctx, 38, 122, 12, 18, '#291b12'); // Arched dark doorway
-            pxRect(ctx, 39, 121, 10, 1, '#291b12');
-            pxRect(ctx, 41, 120, 6, 1, '#291b12');
-            // Mid Perch Platform
-            pxRect(ctx, 14, 96, 30, 6, '#b89c82');
-            pxRect(ctx, 14, 100, 30, 2, '#8a6f56');
-            // Top Perch Bed
-            pxRect(ctx, 28, 58, 28, 7, '#b89c82');
-            pxRect(ctx, 26, 55, 4, 6, '#cbb299');
-            pxRect(ctx, 54, 55, 4, 6, '#cbb299');
-            // Dangling pom-pom toy under the top perch (a little pendulum cats can bat)
+            // flickering licks and sparks breaking off the tips (the same little particles as ever)
+            fireParticles.forEach(fp => {
+                fp.y -= fp.vy;
+                fp.life -= 0.03;
+                if (fp.life <= 0) {
+                    fp.x = 273 + Math.random() * 22;
+                    fp.y = 127;
+                    fp.life = 0.7 + Math.random() * 0.3;
+                }
+                const top = 128 - (tops[Math.round(fp.x) - 272] || 0);
+                if (fp.y > top + 1) return;                                       // still inside the flame
+                const col = fp.life > 0.6 ? FLAME_RAMP[2] : fp.life > 0.35 ? FLAME_RAMP[4] : FLAME_RAMP[5];
+                pxRect(ctx, fp.x, fp.y, 1, fp.life > 0.4 ? 2 : 1, col);
+            });
+        }
+
+        // Food and water bowls: glazed, with a glint, and kibble you can almost hear crunch
+        function drawBowl(x, y, glaze) {
+            const [d2, d1, b, l1, l2] = ramp(glaze, [-0.55, -0.28, 0, 0.22, 0.45]);
+            pxRect(ctx, x, y + 3, 12, 1, d2);
+            pxRect(ctx, x, y, 12, 3, b);
+            pxRect(ctx, x, y, 1, 3, l1); pxRect(ctx, x + 1, y + 1, 1, 1, l2);
+            pxRect(ctx, x + 10, y, 2, 3, d1);
+            pxRect(ctx, x + 1, y - 1, 10, 1, l1);                                  // rim
+            pxRect(ctx, x - 1, y, 1, 3, shade(glaze, -0.75)); pxRect(ctx, x + 12, y, 1, 3, shade(glaze, -0.75));
+            pxRect(ctx, x + 1, y + 4, 10, 1, 'rgba(10, 14, 22, 0.35)');
+        }
+        function drawBowls() {
+            const fx = bowls.foodX, fy = bowls.foodY, wx = bowls.waterX, wy = bowls.waterY;
+            drawBowl(fx, fy, '#f59e0b');
+            pxRect(ctx, fx + 1, fy, 10, 1, '#5a2a0a');                              // inside the bowl
+            if (bowls.foodLevel > 0.05) {
+                const fw = Math.ceil(bowls.foodLevel * 8);
+                for (let i = 0; i < fw; i++) {
+                    pxRect(ctx, fx + 2 + i, fy - 1, 1, 1, i % 2 ? '#8a4a16' : '#a45c20');
+                    if (i % 3 === 1) pxRect(ctx, fx + 2 + i, fy - 1, 1, 1, '#c8803a');
+                }
+                if (bowls.foodLevel > 0.5) { pxRect(ctx, fx + 4, fy - 2, 4, 1, '#9a5420'); pxRect(ctx, fx + 5, fy - 2, 1, 1, '#c8803a'); }
+            }
+            drawBowl(wx, wy, '#3b82f6');
+            pxRect(ctx, wx + 1, wy, 10, 1, '#1e3a8a');
+            if (bowls.waterLevel > 0.05) {
+                pxRect(ctx, wx + 2, wy - 1, 8, 1, '#38bdf8');
+                pxRect(ctx, wx + 2, wy, 8, 1, '#2a8fd0');
+                pxRect(ctx, wx + 3 + (Math.floor(globalTick / 40) % 3), wy - 1, 2, 1, '#d5f1ff');   // a glint, rippling
+            }
+        }
+
+        // The pom-pom toy dangling under the top perch
+        function drawToy() {
             const ball = toyBall();
             const steps = Math.ceil(TOY.len);
             for (let i = 0; i < steps; i++) {
                 const f = i / steps;
-                pxRect(ctx, Math.round(TOY.ax + (ball.x - TOY.ax) * f - 0.5), Math.round(TOY.ay + (ball.y - TOY.ay) * f), 1, 1, '#e5e7eb');
+                pxRect(ctx, Math.round(TOY.ax + (ball.x - TOY.ax) * f - 0.5), Math.round(TOY.ay + (ball.y - TOY.ay) * f), 1, 1, i % 2 ? '#d4d4d8' : '#f4f4f5');
             }
-            pxRect(ctx, Math.round(ball.x - 2.5), Math.round(ball.y - 2.5), 5, 5, '#f43f5e');
-            pxRect(ctx, Math.round(ball.x - 1.5), Math.round(ball.y - 1.5), 2, 1, '#fb7185');
+            const bx = Math.round(ball.x - 2.5), by = Math.round(ball.y - 2.5);
+            pxRect(ctx, bx, by - 1, 5, 7, '#7a1028');
+            pxRect(ctx, bx - 1, by, 7, 5, '#7a1028');
+            pxRect(ctx, bx, by, 5, 5, '#e11d48');
+            pxRect(ctx, bx + 1, by, 3, 1, '#fb7185');
+            pxRect(ctx, bx, by + 1, 1, 2, '#fb7185');
+            pxRect(ctx, bx + 1, by + 1, 1, 1, '#ffe4ea');
+            pxRect(ctx, bx + 4, by + 2, 1, 3, '#9f1239');
+            pxRect(ctx, bx + 1, by + 4, 4, 1, '#9f1239');
+        }
 
-            // 7. Warm Floor Lamp (x: 175, y: 76..142)
-            pxRect(ctx, 174, 138, 12, 4, '#b45309'); // Brass base
-            pxRect(ctx, 179, 88, 2, 50, '#d97706');  // Brass pole
-            // Lampshade
-            pxRect(ctx, 171, 74, 18, 14, lampLit ? '#fde68a' : '#9ca3af');
-            pxRect(ctx, 169, 84, 22, 4, lampLit ? '#fcd34d' : '#6b7280');
-            pxRect(ctx, 171, 74, 18, 2, '#b45309');
-
-            // 8. Cozy Quilted Armchair / Loveseat under Window (x: 84..160, y: 105..144)
-            // Backrest
-            pxRect(ctx, 88, 104, 68, 24, '#2b5847');
-            pxRect(ctx, 90, 102, 64, 3, '#376e59');
-            // Left & Right Rolled Arms
-            pxRect(ctx, 82, 113, 12, 26, '#234739');
-            pxRect(ctx, 82, 111, 12, 4, '#376e59');
-            pxRect(ctx, 150, 113, 12, 26, '#234739');
-            pxRect(ctx, 150, 111, 12, 4, '#376e59');
-            // Plush Seat Cushions
-            pxRect(ctx, 92, 122, 60, 14, '#376e59');
-            pxRect(ctx, 121, 122, 2, 14, '#234739');
-            // Cozy Throw Blanket draped over right side
-            pxRect(ctx, 134, 112, 14, 24, '#e07a5f');
-            pxRect(ctx, 136, 112, 10, 22, '#f2cc8f');
-            // The dark gap under the sofa (a favourite hiding place)
-            pxRect(ctx, 94, 136, 56, 4, '#1a100b');
-            pxRect(ctx, 94, 136, 56, 1, '#0f0906');
-            // Wooden sofa feet
-            pxRect(ctx, 85, 139, 4, 4, '#291810');
-            pxRect(ctx, 155, 139, 4, 4, '#291810');
-
-            // 9. Lush Potted Monstera Plant by Fireplace (x: 194, y: 112..142)
-            //    (moved aside for a Christmas tree in December)
-            if (outside.festive === 'christmas') {
-                drawChristmasTree();
-            } else {
-                pxRect(ctx, 194, 128, 14, 14, '#b45309');
-                pxRect(ctx, 192, 126, 18, 3, '#d97706');
-                // Big tropical leaves
-                pxRect(ctx, 187, 115, 9, 8, '#15803d');
-                pxRect(ctx, 196, 109, 10, 10, '#16a34a');
-                pxRect(ctx, 204, 117, 9, 8, '#15803d');
-                pxRect(ctx, 193, 120, 8, 6, '#22c55e');
-            }
-
-            // 10. Plush Patterned Center Rug (x: 72..226, y: 150..182)
-            pxRect(ctx, 74, 150, 150, 31, '#7c2d12'); // Outer border
-            pxRect(ctx, 78, 152, 142, 27, '#b45309'); // Amber ring
-            pxRect(ctx, 82, 154, 134, 23, '#fef3c7'); // Cream center
-            // Geometric diamond pattern on rug
-            for (let rx = 94; rx < 205; rx += 22) {
-                pxRect(ctx, rx, 162, 10, 7, '#c2410c');
-                pxRect(ctx, rx + 3, 164, 4, 3, '#1e3a8a');
-            }
-            // Rug tassels on left & right edges
-            for (let ty = 152; ty < 180; ty += 4) {
-                pxRect(ctx, 70, ty, 4, 2, '#fde68a');
-                pxRect(ctx, 224, ty, 4, 2, '#fde68a');
-            }
-
-            // Hearth Rug in front of fireplace
-            pxRect(ctx, 238, 154, 52, 20, '#991b1b');
-            pxRect(ctx, 242, 156, 44, 16, '#dc2626');
-
-            // 11. Food & Water Bowls on Mat (x: 218..252, y: 143..151)
-            pxRect(ctx, 217, 144, 38, 8, '#475569'); // Silicone mat
-            // Food Bowl
-            pxRect(ctx, bowls.foodX, bowls.foodY, 12, 4, '#f59e0b');
-            pxRect(ctx, bowls.foodX + 1, bowls.foodY - 1, 10, 2, '#78350f');
-            if (bowls.foodLevel > 0.05) {
-                const foodW = Math.ceil(bowls.foodLevel * 8);
-                pxRect(ctx, bowls.foodX + 2, bowls.foodY - 2, foodW, 2, '#92400e');
-                if (bowls.foodLevel > 0.5) pxRect(ctx, bowls.foodX + 4, bowls.foodY - 3, 4, 1, '#b45309');
-            }
-            // Water Bowl
-            pxRect(ctx, bowls.waterX, bowls.waterY, 12, 4, '#3b82f6');
-            pxRect(ctx, bowls.waterX + 1, bowls.waterY - 1, 10, 2, '#1e3a8a');
-            if (bowls.waterLevel > 0.05) {
-                pxRect(ctx, bowls.waterX + 2, bowls.waterY - 1, 8, 2, '#38bdf8');
-                pxRect(ctx, bowls.waterX + 3, bowls.waterY - 1, 3, 1, '#bae6fd');
-            }
-
-            // 12. Treasures on the mantelpiece and windowsill (while they're still up there)
-            KNOCKABLES.forEach(k => { if (knockableUp(k) && knockablePresent(k)) drawKnockable(k); });
+        function drawRoomEnvironment() {
+            const { x: winX, y: winY, w: winW, h: winH } = WIN;
+            // 1. The view outside, then the glass, then the room itself painted over the top
+            drawOutside(winX, winY, winW, winH);
+            drawGlass();
+            ctx.drawImage(roomBackdrop(), 0, 0);
+            if (outside.season === 'winter' || (outside.temp !== undefined && outside.temp !== null && outside.temp <= 1)) drawFrost(winX, winY, winW, winH);
+            if (outside.festive === 'halloween') drawHalloweenBats();
+            // 2. Family portraits: one of each cat, all the same size (equality!)
+            WALL_PORTRAITS.forEach(pt => { if (!pt.chimney) drawWallPortrait(pt); });
+            // 3. The fireplace: the record player, the fire, festive things, the newest portrait above it
+            drawRecordPlayer();
+            if (fireplaceLit) drawFire();
+            if (outside.festive === 'halloween') spriteFX(ctx, 258, 138, drawPumpkin);
+            if (outside.festive === 'christmas') spriteFX(ctx, 281, 100, drawStockings);
+            WALL_PORTRAITS.forEach(pt => { if (pt.chimney) drawWallPortrait(pt); });
+            // 4. The dangly toy, the lamp, the Christmas tree (in place of the monstera in December), the bowls
+            drawToy();
+            drawLamp();
+            if (outside.festive === 'christmas') drawChristmasTree();
+            drawBowls();
+            // 5. Treasures on the mantelpiece and windowsill (while they're still up there)
+            KNOCKABLES.forEach(k => { if (knockableUp(k) && knockablePresent(k)) spriteFX(ctx, k.x, k.y, () => drawKnockable(k)); });
         }
 
         function drawMouse(c) {
@@ -9070,17 +10212,23 @@
             }
 
             // Draw trailing thread
-            yarn.trail.forEach(pt => {
-                pxRect(ctx, pt.x, pt.y, 1, 1, yarn.color);
+            yarn.trail.forEach((pt, i) => {
+                pxRect(ctx, pt.x, pt.y, 1, 1, i % 3 === 1 ? yarn.highlight : yarn.color);
             });
 
-            // Draw pixel yarn ball
+            // Draw the ball of wool, wound round and round
             const yx = Math.round(yarn.x);
             const yy = Math.round(yarn.y);
-            pxRect(ctx, yx - 2, yy - 5, 5, 5, yarn.color);
-            pxRect(ctx, yx - 3, yy - 4, 7, 3, yarn.color);
-            pxRect(ctx, yx - 1, yy - 4, 2, 2, yarn.highlight);
-            pxRect(ctx, yx, yy - 2, 2, 1, '#9f1239');
+            spriteFX(ctx, yx, yy, () => {
+                const d = shade(yarn.color, -0.3);
+                pxRect(ctx, yx - 2, yy - 6, 5, 6, yarn.color);
+                pxRect(ctx, yx - 3, yy - 5, 7, 4, yarn.color);
+                pxRect(ctx, yx - 2, yy - 5, 1, 1, d); pxRect(ctx, yx - 1, yy - 4, 1, 1, d); pxRect(ctx, yx, yy - 3, 1, 1, d); pxRect(ctx, yx + 1, yy - 2, 1, 1, d);
+                pxRect(ctx, yx, yy - 6, 1, 1, d); pxRect(ctx, yx + 1, yy - 5, 1, 1, d); pxRect(ctx, yx + 2, yy - 4, 1, 1, d);
+                pxRect(ctx, yx - 3, yy - 3, 1, 1, d); pxRect(ctx, yx - 2, yy - 2, 1, 1, d);
+                pxRect(ctx, yx - 1, yy - 5, 2, 1, yarn.highlight);
+                pxRect(ctx, yx - 2, yy - 4, 1, 1, yarn.highlight);
+            }, { light: 0.25, dim: 0.3 });
         }
 
         function drawLightingAndParticles() {
@@ -9245,8 +10393,14 @@
         function renderCatPortraits() {
             cats.forEach((cat, idx) => {
                 const pCanvas = document.getElementById(`portrait-${idx}`);
-                if (pCanvas) drawCatFace(pCanvas.getContext('2d'), cat);
+                if (pCanvas) drawCatFaceFX(pCanvas.getContext('2d'), cat);
             });
+        }
+
+        // The little portraits in the cards, shaded and outlined like the cats in the room
+        function drawCatFaceFX(pCtx, cat) {
+            pCtx.clearRect(0, 0, pCtx.canvas.width, pCtx.canvas.height);
+            spriteFX(pCtx, FX_OX, FX_OY, g => drawCatFace(g, cat), { round: false, light: 0.25, outline: -0.85 });
         }
 
         function drawCatFace(pCtx, cat) {
@@ -9796,17 +10950,17 @@
             if (creator.open) drawCreatorPreview();
             updateFriendships();
 
-            drawStrayEntering();
+            if (stray.active && stray.phase === 'enter') spriteFX(ctx, 125, 80, drawStrayEntering);
 
             // 3. Draw cats, yarn, mouse, the box and anything knocked onto the floor in depth
             //    order, so nearer things overlap farther ones
             const drawables = cats.map(cat => ({ y: cat.y, draw: () => drawPixelCat(ctx, cat, cat.x, cat.y) }));
             drawables.push({ y: yarn.y, draw: drawYarnBall });
-            if (mouse.active && mouse.phase !== 'caught') drawables.push({ y: mouse.y, draw: () => drawMouse(ctx) });
-            if (box.active) drawables.push({ y: box.y - 0.01, draw: drawBox });
+            if (mouse.active && mouse.phase !== 'caught') drawables.push({ y: mouse.y, draw: () => spriteFX(ctx, mouse.x, mouse.y, g => drawMouse(g)) });
+            if (box.active) drawables.push({ y: box.y - 0.01, draw: () => spriteFX(ctx, box.x, box.y, drawBox) });
             if (catnip.active) drawables.push({ y: catnip.y - 6, draw: drawCatnip });
-            floorTreats.forEach(t => drawables.push({ y: t.y - 0.5, draw: () => drawTreat(t) }));
-            KNOCKABLES.forEach(k => { if (!knockableUp(k) && knockablePresent(k)) drawables.push({ y: k.fallTo, draw: () => drawKnockable(k) }); });
+            floorTreats.forEach(t => drawables.push({ y: t.y - 0.5, draw: () => spriteFX(ctx, t.x, t.y, () => drawTreat(t)) }));
+            KNOCKABLES.forEach(k => { if (!knockableUp(k) && knockablePresent(k)) drawables.push({ y: k.fallTo, draw: () => spriteFX(ctx, k.x, k.y, () => drawKnockable(k)) }); });
             drawables.sort((a, b) => a.y - b.y).forEach(d => d.draw());
 
             // 4. Draw warm fireplace/lamp glow & pixel particles, speech bubbles, then the laser dot on top
