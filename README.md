@@ -16,6 +16,8 @@ Everything is in one file, `index.html`. There's nothing to install or build: op
 - **A stray kitten** may turn up at the window, soaked if it's raining. Let it in and it joins the family.
 - **The diary, photos and screensaver.** Everything memorable is written in the diary; snap a polaroid; or go full screen and just watch.
 
+**On a phone** the room stays pinned to the top of the screen while you scroll through the buttons, so you can always see what the cats make of them. Tap to pet, drag a finger to aim the laser or brush a cat. Turn the phone sideways and the room fills the screen with your hand tools beside it.
+
 Everything is remembered in your browser (local storage) between visits. **Settings ⚙️ → Start over** wipes it and lets you choose your cats again.
 
 ## Real local weather

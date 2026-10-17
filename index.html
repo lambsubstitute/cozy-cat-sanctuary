@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#18110d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="Cozy Cats">
     <title>Cozy Pixel Cat Sanctuary</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
@@ -109,6 +114,76 @@
         body.screensaver #ssExit { display: flex; opacity: 0; transition: opacity 0.4s; }
         body.screensaver.ss-awake #ssExit { opacity: 1; }
 
+        /* Toasts sit centred over the room and wrap only when they must */
+        #toastBanner { width: max-content; max-width: calc(100% - 24px); text-align: center; }
+
+        /* ---- Touch screens ---- */
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        body { -webkit-tap-highlight-color: transparent; }
+        button, a, input, label { touch-action: manipulation; }       /* no double-tap zoom on the buttons */
+        #dioramaCanvas { -webkit-touch-callout: none; -webkit-user-select: none; }
+
+        /* ---- Phones, upright ----
+           The header shrinks, and the room and "your hand" stay pinned to the top
+           of the screen while everything else scrolls underneath, so you can
+           always see what the cats make of the button you just pressed. */
+        #turnHint { display: none; }
+        @media (max-width: 639px) and (orientation: portrait) {
+            body:not(.screensaver) header { padding: 8px 10px 10px; margin-bottom: 8px; gap: 8px; }
+            #pawBadge, #tagline { display: none; }
+            #taglineShort { display: block; font-size: 15px; }
+            #turnHint { font-size: 14px; }
+            #hdrButtons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; width: 100%; }
+            #hdrButtons > button {
+                flex-direction: column; justify-content: center; gap: 0;
+                padding: 4px 2px 3px; min-height: 46px;
+                font-size: 15px; line-height: 1.05; text-align: center; overflow-wrap: anywhere;
+            }
+            #hdrButtons > button > span:first-child { font-size: 17px; line-height: 1.2; }
+
+            body:not(.screensaver) #stage {
+                position: sticky; top: 0; z-index: 30;
+                margin: 0 -8px; width: calc(100% + 16px); padding: 7px 7px 6px;
+                background: #18110d;
+                box-shadow: 0 8px 10px -6px rgba(0, 0, 0, 0.9);
+            }
+            body:not(.screensaver) #roomWrap { padding: 0; }
+            body:not(.screensaver) #dioramaCanvas {
+                box-shadow: 0 0 0 2px #1a110b, 0 0 0 5px #5c3d2e, 0 0 0 7px #1a110b;
+            }
+            #toolBar { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0; }
+            #toolBar .hand-label { display: none; }
+            #toolBar > button { justify-content: center; gap: 4px; padding: 5px 2px; font-size: 17px; }
+            #toolHint { grid-column: 1 / -1; margin: 0; text-align: center; font-size: 15px; line-height: 1.1; min-height: 1.1em; }
+            #toastBanner { top: 8px; font-size: 16px; line-height: 1.15; padding: 3px 8px; }
+            footer #activitiesPanel { order: -1; }
+            #activitiesPanel .grid > button { min-height: 46px; }
+            #turnHint { display: block; }
+        }
+
+        /* ---- Phones on their side: the room fills the screen, with your hand beside it ---- */
+        @media (orientation: landscape) and (max-height: 500px) {
+            body:not(.screensaver) header { padding: 6px 10px; margin-bottom: 6px; gap: 6px; }
+            #tagline { display: none; }
+            #hdrButtons > button { padding: 2px 6px; font-size: 15px; }
+            body:not(.screensaver) #stage {
+                flex-direction: row; align-items: center; justify-content: center; gap: 12px;
+                min-height: 100vh; min-height: 100svh; margin: 0; scroll-margin-top: 0;
+            }
+            body:not(.screensaver) #roomWrap { width: auto; flex: 0 0 auto; padding: 8px; }
+            body:not(.screensaver) #dioramaCanvas {
+                width: min(calc((100vh - 28px) * 320 / 190), calc(100vw - 170px));
+                width: min(calc((100svh - 28px) * 320 / 190), calc(100vw - 170px));
+                height: auto; max-width: none;
+                box-shadow: 0 0 0 3px #1a110b, 0 0 0 6px #5c3d2e, 0 0 0 9px #1a110b, 0 12px 30px rgba(0, 0, 0, 0.85);
+            }
+            #toolBar { width: 128px; flex: 0 0 auto; margin-top: 0; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 8px; padding: 0; }
+            #toolBar .hand-label { margin: 0 0 2px; text-align: center; }
+            #toolBar > button { justify-content: flex-start; padding: 6px 8px; font-size: 17px; }
+            #toolHint { margin: 0; text-align: center; font-size: 15px; line-height: 1.1; }
+            #toastBanner { font-size: 16px; }
+        }
+
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #1e140f; }
@@ -120,21 +195,21 @@
     <header class="relative w-full max-w-5xl pixel-panel rounded-lg p-3 sm:px-5 mb-3 flex flex-wrap items-center justify-between gap-3">
         <button id="btnSettings" onclick="toggleSettings()" aria-label="Settings" class="pixel-btn absolute top-2.5 right-2.5 sm:top-3 sm:right-4 px-2 py-1 rounded text-base text-amber-100" title="Settings: the real weather where you live, and starting over">⚙️</button>
         <div class="flex items-center gap-3 pr-12">
-            <div class="w-8 h-8 rounded bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-xl">
+            <div id="pawBadge" class="w-8 h-8 rounded bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-xl">
                 🐾
             </div>
             <div>
                 <h1 class="font-pixel-title text-xs sm:text-sm md:text-base text-amber-300 tracking-wider drop-shadow">
                     COZY CAT SANCTUARY
                 </h1>
-                <p class="text-sm sm:text-base text-amber-100/75 leading-none mt-0.5">
-                    Click cats to pet • Click things in the room to play • Tidy up after the cats!
-                </p>
+                <p id="tagline" class="text-sm sm:text-base text-amber-100/75 leading-none mt-0.5">Click cats to pet • Click things in the room to play • Tidy up after the cats!</p>
+                <p id="taglineShort" class="hidden text-amber-100/75 leading-none mt-1">Tap the cats and the room to play</p>
+                <p id="turnHint" class="text-amber-200/55 leading-none mt-1">📱 Turn sideways for a bigger room</p>
             </div>
         </div>
 
         <!-- Environment & Audio Controls -->
-        <div class="flex flex-wrap items-center gap-1.5">
+        <div id="hdrButtons" class="flex flex-wrap items-center gap-1.5">
             <button id="btnWeather" class="pixel-btn px-2 py-1.5 rounded text-base md:text-[17px] flex items-center gap-1.5 text-amber-100" title="Time & weather: 'live' follows your clock (click to pick a scene)">
                 <span id="weatherIcon">🕰️</span>
                 <span id="weatherLabel">Real Time</span>
@@ -172,8 +247,8 @@
         </div>
     </header>
 
-    <main class="w-full max-w-5xl flex-1 flex flex-col items-center justify-center my-1 relative">
-        <div class="w-full relative flex justify-center items-center px-1">
+    <main id="stage" class="w-full max-w-5xl flex-1 flex flex-col items-center justify-center my-1 relative">
+        <div id="roomWrap" class="w-full relative flex justify-center items-center px-1">
             <canvas id="dioramaCanvas" width="320" height="190" class="w-full max-w-5xl aspect-[320/190] rounded-sm"></canvas>
             
             <!-- Hide and seek: eyes closed, counting -->
@@ -194,7 +269,7 @@
         </div>
         <!-- What's in your hand: petting, treats, the brush or the laser pointer -->
         <div id="toolBar" class="w-full mt-4 flex flex-wrap items-center justify-center gap-2 px-1">
-            <span class="font-pixel-title text-[10px] text-amber-300 uppercase tracking-wider mr-1">Your hand</span>
+            <span class="hand-label font-pixel-title text-[10px] text-amber-300 uppercase tracking-wider mr-1">Your hand</span>
             <button id="tool-pet" onclick="setTool('pet')" class="pixel-btn active-btn px-2.5 py-1 rounded text-base flex items-center gap-1.5 text-amber-100" title="Click cats to pet them, and things in the room to play">
                 <span>✋</span><span>Pet</span>
             </button>
@@ -219,7 +294,7 @@
         </div>
 
         <!-- Room Activity Triggers -->
-        <div class="lg:col-span-4 pixel-panel rounded-lg p-2.5 flex flex-col self-start">
+        <div id="activitiesPanel" class="lg:col-span-4 pixel-panel rounded-lg p-2.5 flex flex-col self-start">
             <div class="flex items-center justify-between mb-1.5">
                 <span class="font-pixel-title text-[10px] text-amber-300 uppercase tracking-wider">Cozy Activities</span>
                 <span class="text-xs text-amber-200/70">Trigger Room Events</span>
@@ -327,6 +402,7 @@
         <div class="pixel-panel rounded-lg w-full max-w-3xl flex flex-col items-center gap-3 p-4">
             <img id="photoImg" alt="A polaroid of the cats" class="w-full h-auto rounded shadow-lg" style="image-rendering: pixelated;">
             <div class="flex gap-2">
+                <button id="photoShare" onclick="sharePhoto()" class="hidden pixel-btn pixel-btn-amber px-3 py-1 rounded text-lg text-white">📤 Share</button>
                 <a id="photoSave" href="#" download="cozy-cats.png" class="pixel-btn pixel-btn-amber px-3 py-1 rounded text-lg text-white">💾 Save photo</a>
                 <button onclick="togglePhoto(false)" class="pixel-btn px-3 py-1 rounded text-lg text-amber-100">Close</button>
             </div>
@@ -369,6 +445,16 @@
         let fireplaceLit = true;
         let lampLit = true;
         let globalTick = 0;
+
+        // On a phone or tablet you tap rather than click, and there's no Esc key
+        const TOUCH_UI = (() => {
+            try { return matchMedia('(hover: none) and (pointer: coarse)').matches; } catch (e) { return false; }
+        })();
+        function tapify(s) {
+            if (!TOUCH_UI || typeof s !== 'string') return s;
+            return s.replace(/Right-click \(or press and hold\)/g, 'Press and hold')
+                    .replace(/\b([Cc])lick(ing|ed|s)?\b/g, (m, c, end) => (c === 'C' ? 'Tap' : 'tap') + ({ ing: 'ping', ed: 'ped', s: 's' }[end] || ''));
+        }
 
         // ------------------------------------------------------------------
         // TIME OF DAY, WEATHER & SEASONS
@@ -7033,7 +7119,7 @@
                             <div class="text-base text-amber-100/80 leading-tight">${esc(ch.blurb)}</div>
                         </div>
                         <div class="flex flex-col gap-1">
-                            <span class="font-pixel-title text-[9px] text-amber-300 tracking-wider">VOICE <span class="text-amber-200/50">(click to hear)</span></span>
+                            <span class="font-pixel-title text-[9px] text-amber-300 tracking-wider">VOICE <span class="text-amber-200/50">(${tapify('click')} to hear)</span></span>
                             <div class="flex flex-wrap gap-1.5">${VOICES.map(v => chip('voice', v.id, `${v.icon} ${v.name}`, L.voice === v.id)).join('')}</div>
                         </div>
                         <div class="flex flex-col gap-1">
@@ -7900,7 +7986,13 @@
 
         window.triggerHideAndSeek = function() {
             if (hideGame.active) {
-                if (hideGame.byUser) { showToast(`Still looking for ${hideGame.cat.name}! (Esc to give up)`); return; }
+                if (hideGame.byUser) {
+                    // Pressing it again straight away gives up (there's no Esc key on a phone)
+                    if (hideGame.giveUpAt && globalTick - hideGame.giveUpAt < 300) { giveUpHideGame(); return; }
+                    hideGame.giveUpAt = globalTick;
+                    showToast(`Still looking for ${hideGame.cat.name}! (${TOUCH_UI ? 'tap Hide & Seek again' : 'Esc, or press again,'} to give up)`);
+                    return;
+                }
                 endHideGame('cancelled', hideGame.cat);             // a cat was already hiding on its own: start properly
             }
             const keen = shuffled(cats).filter(c => c.surface && !c.hunt && !c.pounce && !(c.nav && c.nav.jump) &&
@@ -7909,7 +8001,7 @@
                 let ok = false;
                 c.stopAndDo(() => (ok = c.goHide('game')));
                 if (!ok) continue;
-                Object.assign(hideGame, { active: true, cat: c, byUser: true, phase: 'counting', start: globalTick, hidden: false, hintSent: false, seekStart: 0 });
+                Object.assign(hideGame, { active: true, cat: c, byUser: true, phase: 'counting', start: globalTick, hidden: false, hintSent: false, seekStart: 0, giveUpAt: 0 });
                 if (laser.on) toggleLaser(false);
                 setCountOverlay(`🙈 Counting... 10`, 'No peeking!');
                 sound.playPop();
@@ -8131,10 +8223,14 @@
             brush: 'Press on a cat and drag back and forth to brush it',
             laser: 'Point at the room to aim the dot (Esc to stop)'
         };
+        if (TOUCH_UI) {
+            TOOL_HINTS.brush = 'Touch a cat and stroke back and forth to brush it';
+            TOOL_HINTS.laser = 'Drag your finger over the room to aim the dot';
+        }
 
         function updateToolUI() {
             canvas.style.cursor = tool === 'pet' ? 'pointer' : 'none';
-            canvas.style.touchAction = tool === 'pet' ? '' : 'none';
+            canvas.style.touchAction = tool === 'pet' ? 'manipulation' : 'none';   // scrolling is fine while petting; not while aiming
             ['pet', 'treat', 'brush'].forEach(t => {
                 const b = document.getElementById('tool-' + t);
                 if (b) b.classList.toggle('active-btn', tool === t);
@@ -8144,7 +8240,7 @@
             const ll = document.getElementById('laserLabel');
             if (ll) ll.textContent = laser.on ? 'Laser: ON' : 'Laser';
             const h = document.getElementById('toolHint');
-            if (h) h.textContent = TOOL_HINTS[tool];
+            if (h) h.textContent = tapify(TOOL_HINTS[tool]);
         }
 
         window.setTool = function(name) {
@@ -8164,19 +8260,27 @@
                     if (Math.random() < (sleepy ? 0.3 : 0.85)) c.queueTask(() => c.goAskTreat(), (sleepy ? 40 : 6) + Math.floor(Math.random() * 30), 'treat');
                 });
             } else if (tool === 'brush') {
-                showToast('Brush in hand ✨ Press on a cat and stroke back and forth');
+                showToast(TOUCH_UI ? 'Brush in hand ✨ Touch a cat and stroke back and forth' : 'Brush in hand ✨ Press on a cat and stroke back and forth');
             } else {
                 showToast('Back to petting ✋');
             }
         };
 
-        // Which cat (if any) is under the pointer
-        function catAt(mx, my) {
+        // Which cat (if any) is under the pointer: the nearest, if a few are close.
+        // A fingertip is much blunter than a mouse pointer, so a tap reaches a little
+        // further (tapSlop, in room pixels, set as each tap lands).
+        let tapSlop = 0;
+        function catAt(mx, my, slop = tapSlop) {
+            let best = null, bestD = Infinity;
+            const r = 13 + slop;
             for (let i = cats.length - 1; i >= 0; i--) {
                 const c = cats[i];
-                if (Math.abs(mx - c.x) < 13 && Math.abs(my - (c.y - c.z - 6)) < 13) return c;
+                const dx = Math.abs(mx - c.x), dy = Math.abs(my - (c.y - c.z - 6));
+                if (dx >= r || dy >= r) continue;
+                const d = dx * dx + dy * dy;
+                if (d < bestD - 0.01) { best = c; bestD = d; }
             }
-            return null;
+            return best;
         }
 
         // ---- Treats ----
@@ -9183,8 +9287,9 @@
                 const stateEl = document.getElementById(`cat-state-${idx}`);
                 const moodEl = document.getElementById(`cat-mood-${idx}`);
                 const info = cat.getStateDisplay();
-                if (stateEl && stateEl.textContent !== info.label) {
-                    stateEl.textContent = info.label;
+                const label = tapify(info.label);
+                if (stateEl && stateEl.textContent !== label) {
+                    stateEl.textContent = label;
                 }
                 if (moodEl && moodEl.textContent !== info.emoji) {
                     moodEl.textContent = info.emoji;
@@ -9240,7 +9345,7 @@
         function showToast(msg) {
             const banner = document.getElementById('toastBanner');
             if (!banner) return;
-            banner.textContent = msg;
+            banner.textContent = tapify(msg);
             banner.style.opacity = '1';
             clearTimeout(toastTimeout);
             toastTimeout = setTimeout(() => {
@@ -9277,7 +9382,15 @@
             if (e.pointerType === 'mouse') pointer.inside = false;
             if (laser.on && e.pointerType === 'mouse') laser.visible = false; // fingers leave the dot where it was
         });
-        const pointerUp = () => { pointer.down = false; endBrushing(); };
+        const pointerUp = (e) => {
+            pointer.down = false;
+            endBrushing();
+            if (e && e.pointerType === 'touch') pointer.inside = false;      // the treat in your hand goes with your finger
+        };
+        // A long press on the room is for brushing, not for the phone's copy/save menu
+        let lastPointerType = 'mouse';
+        canvas.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; }, true);
+        canvas.addEventListener('contextmenu', (e) => { if (lastPointerType !== 'mouse') e.preventDefault(); });
         window.addEventListener('pointerup', pointerUp);
         window.addEventListener('pointercancel', pointerUp);
 
@@ -9289,26 +9402,31 @@
             if (laser.on) { endBrushing(); tool = 'laser'; } else if (tool === 'laser') tool = 'pet';
             updateToolUI();
             sound.playPop();
-            showToast(laser.on ? 'Laser on! Point at the room to aim the dot 🔴 (Esc to stop)' : 'Laser pointer off');
+            showToast(!laser.on ? 'Laser pointer off' : TOUCH_UI ? 'Laser on! Drag your finger over the room 🔴 (tap Laser again to stop)' : 'Laser on! Point at the room to aim the dot 🔴 (Esc to stop)');
             if (laser.on) logDiary('You got the laser pointer out. Chaos!', '🔴', { key: 'laser', every: 15 });
         };
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') return;
-            if (hideGame.active && hideGame.byUser) {
-                const c = hideGame.cat;
-                showToast(`You give up! ${c.name} was hiding ${c.hide ? c.hide.spot.name : 'somewhere'} 😹`);
-                if (c.state === 'hiding') c.comeOutOfHiding(false);
-                endHideGame('cancelled', c);
-            }
+            if (hideGame.active && hideGame.byUser) giveUpHideGame();
             if (laser.on) toggleLaser(false);
             else if (tool !== 'pet') setTool('pet');
         });
+
+        function giveUpHideGame() {
+            const c = hideGame.cat;
+            showToast(`You give up! ${c.name} was hiding ${c.hide ? c.hide.spot.name : 'somewhere'} 😹`);
+            if (c.state === 'hiding') c.comeOutOfHiding(false);
+            endHideGame('cancelled', c);
+        }
 
         window.triggerReleaseMouse = function() { releaseMouse(); };
 
         canvas.addEventListener('pointerdown', (e) => {
             const { x: mx, y: my } = roomCoords(e);
             Object.assign(pointer, { x: mx, y: my, inside: true, down: true });
+            const scale = canvas.getBoundingClientRect().width / W;
+            tapSlop = e.pointerType === 'touch' ? clamp(9 / scale, 2, 8) : 0;
+            const sl = tapSlop;
 
             // In laser mode a tap/click just moves the dot
             if (laser.on) {
@@ -9323,7 +9441,7 @@
             }
 
             // The kitten at the window: let it in!
-            if (stray.active && stray.phase === 'sit' && Math.abs(mx - stray.x) < 8 && my > 42 && my < 60) {
+            if (stray.active && stray.phase === 'sit' && Math.abs(mx - stray.x) < 8 + sl && my > 42 - sl && my < 60 + sl) {
                 letStrayIn();
                 return;
             }
@@ -9349,7 +9467,7 @@
 
             // 1a. Tidy up something a cat knocked onto the floor
             for (const k of KNOCKABLES) {
-                if (knockableUp(k) || !knockablePresent(k) || Math.abs(mx - k.x) > 8 || my < k.y - 10 || my > k.y + 3) continue;
+                if (knockableUp(k) || !knockablePresent(k) || Math.abs(mx - k.x) > 8 + sl || my < k.y - 10 - sl || my > k.y + 3 + sl) continue;
                 tidyKnockable(k);
                 showToast(k.id === 'mug' ? 'Mopped up the tea and made a fresh mug ☕' : `You put ${k.name} back on ${k.where} ✨`);
                 logDiary(k.id === 'mug' ? 'You mopped up the tea and made a fresh mug' : `You put ${k.name} back on ${k.where}`, '🧹', { key: 'tidy' + k.id, every: 2 });
@@ -9357,7 +9475,7 @@
             }
 
             // 1a. A nudge towards the cardboard box
-            if (box.active && !box.leaving && Math.abs(mx - box.x) < 13 && my > box.y - 16 && my < box.y + 2) {
+            if (box.active && !box.leaving && Math.abs(mx - box.x) < 13 + sl && my > box.y - 16 - sl && my < box.y + 2 + sl) {
                 const keen = shuffled(cats).find(c => !c.hunt && !c.nav && c.surface !== 'box' && !SLEEPY_STATES.includes(c.state) && c.state !== 'proud');
                 if (keen && keen.goBox(TROT_SPEED)) showToast(`Psst, ${keen.name}... look, a box! 📦`);
                 else showToast('A perfectly good cardboard box 📦');
@@ -9367,7 +9485,7 @@
 
             // 1b. Flick the dangly toy on the cat tree
             const tb = toyBall();
-            if (Math.hypot(mx - tb.x, my - tb.y) < 6) {
+            if (Math.hypot(mx - tb.x, my - tb.y) < 6 + sl) {
                 batToy(mx < tb.x ? 0.07 : -0.07);
                 showToast('Boing! The dangly toy swings 🪀');
                 // a cat who's up for it may come over and play
@@ -9379,7 +9497,7 @@
             }
 
             // 2. Check if user clicked the yarn ball
-            if (Math.hypot(mx - yarn.x, my - yarn.y) < 12) {
+            if (Math.hypot(mx - yarn.x, my - yarn.y) < 12 + sl / 2) {
                 triggerTossYarn();
                 return;
             }
@@ -9399,7 +9517,7 @@
             }
 
             // 4b. Check if user clicked the record player on the mantelpiece
-            if (mx >= 270 && mx <= 292 && my >= 52 && my <= 65) {
+            if (mx >= 270 && mx <= 292 && my >= 52 - sl / 2 && my <= 65 + sl / 2) {
                 toggleMusic();
                 return;
             }
@@ -9424,23 +9542,23 @@
             }
 
             // 5c. Shoo the squirrel off (it's not bothered, but it does go)
-            if (squirrel.active && Math.abs(mx - squirrel.x) < 8 && my > squirrel.y - 17 && my < squirrel.y + 2) {
+            if (squirrel.active && Math.abs(mx - squirrel.x) < 8 + sl && my > squirrel.y - 17 - sl && my < squirrel.y + 2 + sl) {
                 showToast(`Shoo! The ${squirrel.kind.name} scampers off 🐿️`);
                 squirrelLeave();
                 return;
             }
 
             // 5b. Night visitors: shoo the fox, wave off the UFO... or wave at the moon
-            if (fox.active && fox.phase !== 'off' && Math.abs(mx - fox.x) < 9 && my > 80 && my < 97) { foxLeave(true); return; }
-            if (ufo.active && ufo.phase !== 'leave' && Math.abs(mx - ufo.x) < 10 && Math.abs(my - ufo.y) < 7) {
+            if (fox.active && fox.phase !== 'off' && Math.abs(mx - fox.x) < 9 + sl && my > 80 - sl && my < 97 + sl) { foxLeave(true); return; }
+            if (ufo.active && ufo.phase !== 'leave' && Math.abs(mx - ufo.x) < 10 + sl && Math.abs(my - ufo.y) < 7 + sl) {
                 showToast('👽 Beep boop. (It seems to have somewhere else to be)');
                 ufo.phase = 'leave'; ufo.t = 0; ufoGone();
                 return;
             }
-            if (outside.phase === 'night' && mx >= 137 && mx <= 150 && my >= 32 && my <= 45) { summonUfo(); return; }
+            if (outside.phase === 'night' && mx >= 137 - sl && mx <= 150 + sl && my >= 32 - sl && my <= 45 + sl) { summonUfo(); return; }
 
             // 5c. Shoo a bird away from the window
-            if (bird.active && Math.hypot(mx - bird.x, my - (bird.y - 3)) < 7) {
+            if (bird.active && Math.hypot(mx - bird.x, my - (bird.y - 3)) < 7 + sl) {
                 birdFlyOff(true);
                 return;
             }
@@ -10006,7 +10124,28 @@
                 link.href = url;
                 link.download = `cozy-cats-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}.png`;
             }
+            const share = document.getElementById('photoShare');
+            if (share) share.classList.toggle('hidden', !photoFile(url));
             setTimeout(() => togglePhoto(true), 350);
+        };
+
+        // On a phone, the share sheet is the easy way to put the photo in your camera roll or send it on
+        function photoFile(url) {
+            if (!TOUCH_UI || window.claude || !navigator.share || !navigator.canShare) return null;
+            try {
+                const bin = atob(String(url).split(',')[1] || ''), bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const link = document.getElementById('photoSave');
+                const file = new File([bytes], (link && link.download) || 'cozy-cats.png', { type: 'image/png' });
+                return navigator.canShare({ files: [file] }) ? file : null;
+            } catch (e) { return null; }
+        }
+        window.sharePhoto = async function() {
+            const img = document.getElementById('photoImg');
+            const file = img && photoFile(img.src);
+            if (!file) return;
+            try { await navigator.share({ files: [file], title: 'Cozy Cat Sanctuary' }); }
+            catch (e) { /* closed the share sheet: fine */ }
         };
 
         // When the sanctuary runs inside claude.ai, a plain download link can't save files:
@@ -10060,7 +10199,7 @@
                 if (laser.on) toggleLaser(false);
                 if (tool !== 'pet') setTool('pet');
                 try { const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* not allowed: full window instead */ }
-                showToast('Screensaver: press Esc (or the ✕ in the corner) to come back');
+                showToast(TOUCH_UI ? 'Screensaver: tap the ✕ in the corner to come back' : 'Screensaver: press Esc (or the ✕ in the corner) to come back');
                 logDiary('You sat back and watched the cats for a while', '🛋️', { key: 'screensaver', every: 30 });
             } else if (document.fullscreenElement) {
                 try { const r = document.exitFullscreen(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* fine */ }
@@ -10074,6 +10213,7 @@
             if (screensaver) ssCursorTimer = setTimeout(() => document.body.classList.remove('ss-awake'), 2500);
         }
         document.addEventListener('pointermove', () => { if (screensaver) showSsExit(); });
+        document.addEventListener('pointerdown', () => { if (screensaver) showSsExit(); }, true);   // a tap shows the ✕ on touch screens
         document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && screensaver) toggleScreensaver(false); });
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape') return;
@@ -10103,8 +10243,25 @@
             updateWeatherButton();
             updateSeasonButton();
             updateFireBtnLabel();
+            updateToolUI();
+            const tag = document.getElementById('tagline');
+            if (tag) tag.textContent = tapify(tag.textContent);
+            const ph = document.getElementById('photoHint');
+            if (ph) ph.textContent = tapify(ph.textContent);
             animateLoop();
         };
+
+        // Turn a phone on its side and the room comes up to fill the screen
+        (() => {
+            let mq;
+            try { mq = matchMedia('(orientation: landscape) and (max-height: 500px)'); } catch (e) { return; }
+            const fit = () => {
+                if (!mq.matches || screensaver || creatorOpen()) return;
+                const stage = document.getElementById('stage');
+                if (stage) setTimeout(() => stage.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250);
+            };
+            if (mq.addEventListener) mq.addEventListener('change', fit); else if (mq.addListener) mq.addListener(fit);
+        })();
     </script>
 </body>
 </html>

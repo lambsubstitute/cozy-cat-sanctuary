@@ -45,3 +45,10 @@ Options, as environment variables:
 | `startover_test.py <html>` | Settings → Start over forgets everything |
 | `moon_click.py <html>` | Clicking the moon at night summons the UFO; clicking the UFO sends it off |
 | `livewx_test.py <html>` | Real local weather, with the weather service mocked: town search, every kind of weather, going offline, and reloading |
+| `touch_test.py <html>` | Phones: tapping cats (and just missing them), treats, brushing and the laser with a finger, hide and seek, the screensaver, the room staying pinned while you scroll, turning the phone sideways, and the desktop layout unchanged |
+
+## Phone layout
+
+`touch_test.py` and `mobile_shot.py` need the real page styling, so they let Tailwind and the Google fonts load from the internet (and block everything else). To run them offline, see `assets.py`.
+
+`mobile_shot.py <html> <out_prefix> <setup_js> [WxH ...]` takes full-page screenshots at phone sizes and reports any sideways overflow, for example `python3 tests/mobile_shot.py $GAME shot '' 390x844 844x390`.
