@@ -45,7 +45,7 @@ Options, as environment variables:
 | `startover_test.py <html>` | Settings → Start over forgets everything |
 | `moon_click.py <html>` | Clicking the moon at night summons the UFO; clicking the UFO sends it off |
 | `livewx_test.py <html>` | Real local weather, with the weather service mocked: town search, every kind of weather, going offline, and reloading |
-| `pose_sheet.py <html> <out.png> [pose ...]` | Not a check: draws every cat pose (or the ones you name) for four different coats through the game's real drawing code, side by side, for looking over the artwork |
+| `pose_sheet.py <html> <out.png> [pose ...]` | Not a check: draws every cat pose (or the ones you name) for four different coats through the game's real drawing code, side by side, for looking over the artwork (at whatever resolution the canvas is drawn) |
 | `touch_test.py <html>` | Phones: tapping cats (and just missing them), treats, brushing and the laser with a finger, hide and seek, the screensaver, the room staying pinned while you scroll, turning the phone sideways, and the desktop layout unchanged |
 
 ## Phone layout

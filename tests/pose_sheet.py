@@ -37,10 +37,11 @@ with sync_playwright() as p:
         pg.wait_for_timeout(250)
         d = pg.evaluate("document.getElementById('dioramaCanvas').toDataURL('image/png')")
         im = Image.open(io.BytesIO(base64.b64decode(d.split(",")[1]))).convert("RGB")
-        rows.append(im.crop((30, 140, 250, 180)))
+        r = im.width // 320                     # the canvas holds r pixels per room pixel
+        rows.append(im.crop((30 * r, 140 * r, 250 * r, 180 * r)))
     sheet = Image.new("RGB", (220 * 4, 40 * 4 * len(rows)))
-    for k, r in enumerate(rows):
-        sheet.paste(r.resize((880, 160), Image.NEAREST), (0, k * 160))
+    for k, row in enumerate(rows):
+        sheet.paste(row.resize((880, 160), Image.NEAREST), (0, k * 160))
     sheet.save(out)
     print("poses:", POSES, "errors:", errs[:3])
     b.close()
