@@ -2410,6 +2410,7 @@
                 this.pitch = config.pitch;
                 this.pal = config.palette;
                 this.isTuxedo = config.isTuxedo;
+                this.pattern = (config.look && config.look.pattern) || { tortie: 'tortie', black: 'solid' }[config.coatId] || (config.isTuxedo ? 'tuxedo' : 'tabby');   // markings (see coatPattern)
                 this.speedMult = config.speed || 1;   // personality: how zippy this cat is
 
                 this.surface = surface;            // which floor/ledge the cat is on (null while mid-air)
@@ -5406,17 +5407,20 @@
         function hd(c, x, y, w, h, color) {
             if (c === smallCtx) { c.detail(x, y, w, h, color); return; }
             const g = c === fxTee ? fxHiG : c, s = RES;
+            const X = Math.round(x * s) / s, Y = Math.round(y * s) / s, Wd = Math.max(1, Math.round(w * s)) / s, Ht = Math.max(1, Math.round(h * s)) / s;
             g.fillStyle = color;
-            g.fillRect(Math.round(x * s) / s, Math.round(y * s) / s, Math.max(1, Math.round(w * s)) / s, Math.max(1, Math.round(h * s)) / s);
+            g.fillRect(X, Y, Wd, Ht);
+            if (g === fxHiG) fxMark(X, Y, Wd, Ht);
         }
 
         // Clear a fine patch of a sprite's full-resolution drawing (to carve a point or a notch out
         // of its basic shape). Only means anything inside spriteFX.
         function hdClear(c, x, y, w, h) {
-            if (c === smallCtx) { if (c.real === fxTee) fxHiG.clearRect(...c.map(x, y, w, h, RES)); return; }
+            if (c === smallCtx) { if (c.real === fxTee) { const r = c.map(x, y, w, h, RES); fxHiG.clearRect(...r); fxMark(...r); } return; }
             if (c !== fxTee) return;
-            const s = RES;
-            fxHiG.clearRect(Math.round(x * s) / s, Math.round(y * s) / s, Math.round(w * s) / s, Math.round(h * s) / s);
+            const s = RES, r = [Math.round(x * s) / s, Math.round(y * s) / s, Math.round(w * s) / s, Math.round(h * s) / s];
+            fxHiG.clearRect(...r);
+            fxMark(...r);
         }
 
         // A little bitmap on the fine grid: each character is one fine pixel, coloured from pal
@@ -5438,8 +5442,13 @@
         const LID = '#24160f', PUPIL = '#0e0806', WHISKER = 'rgba(255, 255, 255, 0.5)';
         // A side-on eye, the 2 x 2 one at (x, y), facing right: a dark upper lid, a slit pupil
         // towards the front, a glint of light, and the lower half a little brighter
-        function eyeHD(c, cat, x, y) {
+        function eyeHD(c, cat, x, y, half = false) {
             const e = cat.pal.eyes;
+            if (half) {                                                       // half shut, mid-blink
+                hd(c, x, y, 2, 0.5, cat.pal.base); hd(c, x, y + 0.5, 2, 0.5, LID);
+                hd(c, x, y + 1, 2, 1, shade(e, 0.15)); hd(c, x + 1, y + 1, 0.5, 1, PUPIL);
+                return;
+            }
             hd(c, x, y, 0.5, 0.5, cat.pal.base);                             // rounded at the back
             hd(c, x + 0.5, y, 1.5, 0.5, LID);
             hd(c, x, y + 0.5, 2, 1.5, e);
@@ -5467,16 +5476,141 @@
             }
         }
         // A side-on ear, the 2 x 2 one at (x, y): pointed at the tip, pink inside
-        function earHD(c, cat, x, y) {
+        function earHD(c, cat, x, y, flick = false) {
+            if (flick) {                                                      // flicked back for a moment
+                hdClear(c, x, y, 2, 2);
+                fineTri(c, x - 0.1, y + 2.1, x + 2.1, y + 2.1, x - 0.6, y + 0.8, cat.pal.dark);
+                fineTri(c, x + 0.5, y + 2, x + 1.5, y + 2, x + 0.1, y + 1.4, blendColors(cat.pal.nose, cat.pal.dark, 0.35));
+                return;
+            }
             hdClear(c, x, y, 1, 0.5);
             hdClear(c, x, y + 0.5, 0.5, 0.5);
             hd(c, x + 0.5, y + 1, 1, 0.5, blendColors(cat.pal.nose, cat.pal.dark, 0.35));
             hd(c, x + 1, y + 0.5, 0.5, 0.5, blendColors(cat.pal.nose, cat.pal.dark, 0.55));
         }
+        // A triangle of colour on the fine grid
+        function fineTri(c, ax, ay, bx, by, cx, cy, col) {
+            const pts = [[ax, ay], [bx, by], [cx, cy]];
+            const y0 = Math.floor(Math.min(ay, by, cy) * RES), y1 = Math.ceil(Math.max(ay, by, cy) * RES);
+            for (let fy = y0; fy < y1; fy++) {
+                const y = (fy + 0.5) / RES, xs = [];
+                for (let i = 0; i < 3; i++) {
+                    const [px, py] = pts[i], [qx, qy] = pts[(i + 1) % 3];
+                    if ((y >= py && y < qy) || (y >= qy && y < py)) xs.push(px + (qx - px) * (y - py) / (qy - py));
+                }
+                if (xs.length < 2) continue;
+                const x0 = Math.round(Math.min(...xs) * RES) / RES, x1 = Math.round(Math.max(...xs) * RES) / RES;
+                if (x1 > x0) hd(c, x0, fy / RES, x1 - x0, 1 / RES, col);
+            }
+        }
+        // Is this cat flicking an ear just now? (now and then, for a moment)
+        function earFlick(cat) {
+            const t = cat.animTick + cat.id * 97, k = Math.floor(t / 260);
+            return t % 260 < 7 && hash2(k, cat.id, 19) < 0.5;
+        }
+        // A breath in: the back rises half a pixel, from x along w at the top edge y
+        function breathHD(c, cat, x, y, w, stripes = [], col = cat.pal.base) {
+            hd(c, x, y - 0.5, w, 0.5, col);
+            stripes.forEach(sx => hd(c, sx, y - 0.5, 2, 0.5, cat.pal.stripe));
+        }
         // Toes on a 2-wide paw whose bottom-left is at (x, y)
         function pawHD(c, cat, x, y) {
             hd(c, x + 1, y - 0.5, 0.5, 0.5, shade(cat.pal.paws, -0.3));
             hd(c, x, y - 1, 2, 0.5, shade(cat.pal.paws, 0.12));
+        }
+
+        // ---- Smooth parts: tails, legs and paws, drawn on the fine grid from round dabs of colour
+        // so they can bend and move half a pixel at a time. In a sprite they always win over the
+        // blown-up drawing (see spriteFX). ----
+        // dabs: [x, y, radius, colour], each a disc; later dabs paint over earlier ones. A colour can
+        // be a function of where the pixel sits in its dab, (dx, dy) => colour, to shade it round.
+        function fineDabs(c, dabs) {
+            let g = c, K = 1, tx = 0, ty = 0, sx = 1;
+            if (c === smallCtx) { g = c.real; K = c.K; tx = c.tx; ty = c.ty; sx = c.sx; }
+            const real = g === fxTee ? fxHiG : g, S = RES * K, rows = new Map();
+            for (const [x, y, r, col] of dabs) {
+                const X = (tx + sx * x) * S, Y = (ty + y) * S, Rr = r * S, R2 = Rr * Rr, fn = typeof col === 'function';
+                for (let fy = Math.floor(Y - Rr); fy < Y + Rr; fy++) {
+                    let row = rows.get(fy);
+                    if (!row) rows.set(fy, row = new Map());
+                    for (let fx = Math.floor(X - Rr); fx < X + Rr; fx++) {
+                        const dx = fx + 0.5 - X, dy = fy + 0.5 - Y;
+                        if (dx * dx + dy * dy <= R2) row.set(fx, fn ? col(sx * dx / S, dy / S) : col);
+                    }
+                }
+            }
+            rows.forEach((row, fy) => {                                      // runs of one colour in one go
+                const xs = [...row.keys()].sort((a, b) => a - b);
+                for (let i = 0; i < xs.length;) {
+                    const col = row.get(xs[i]);
+                    let j = i + 1;
+                    while (j < xs.length && xs[j] === xs[j - 1] + 1 && row.get(xs[j]) === col) j++;
+                    const x = xs[i] / RES, y = fy / RES, w = (j - i) / RES;
+                    real.fillStyle = col;
+                    real.fillRect(x, y, w, 1 / RES);
+                    if (real === fxHiG) fxMark(x, y, w, 1 / RES);
+                    i = j;
+                }
+            });
+        }
+        // Colours for something round: its own colour, a shaded underside and a lit top edge.
+        // n is the direction (unit vector) of its underside.
+        function roundShader(col, r, nx, ny, under = -0.24, top = 0.1) {
+            const d = shade(col, under), l = shade(col, top);
+            return (dx, dy) => { const t = (dx * nx + dy * ny) / r; return t > 0.42 ? d : t < -0.55 ? l : col; };
+        }
+        // A tail: a tapering tube leaving the body at (x, y) heading at angle a (0 points forward, the
+        // way the cat faces; -PI/2 is straight up, PI straight back), bending by bend per pixel along
+        // its length, with curl bending it more towards the tip. Marked to suit the cat's coat.
+        function catTail(c, cat, x, y, a, len, bend = 0, curl = 0, w0 = 1.9, w1 = 1.2) {
+            const pal = cat.pal, pat = cat.pattern || 'tabby';
+            const tip = pat === 'tabby' ? pal.stripe : pat === 'colourpoint' || pat === 'calico' ? pal.dark : pal.base;
+            const root = pat === 'colourpoint' ? blendColors(pal.base, pal.dark, 0.75) : pat === 'calico' ? pal.dark : pal.base;
+            const dabs = [], ds = 0.25;
+            let ang = a;
+            for (let s = 0; s <= len; s += ds) {
+                const f = s / len, r = (w0 + (w1 - w0) * f) / 2;
+                let col = f > 0.84 ? tip : root;
+                if (pat === 'tabby' && f > 0.14 && f <= 0.84 && Math.floor(s / 1.25) % 2) col = pal.stripe;
+                else if (pat === 'calico' && f > 0.35 && f < 0.62) col = pal.stripe;
+                else if (pat === 'tortie' && f > 0.1 && hash2(Math.floor(s * 1.4), cat.id, 33) < 0.4) col = pal.stripe;
+                else if (pat === 'colourpoint') col = blendColors(root, pal.dark, Math.min(1, f * 1.6));
+                let nx = -Math.sin(ang), ny = Math.cos(ang);                  // its underside
+                if (ny < 0) { nx = -nx; ny = -ny; }
+                dabs.push([x, y, r, roundShader(col, r, nx, ny)]);
+                ang += (bend + curl * f * 2) * ds;
+                x += Math.cos(ang) * ds; y += Math.sin(ang) * ds;
+            }
+            fineDabs(c, dabs);
+        }
+        // A leg from the hip or shoulder at (hx, hy) to a paw whose sole is at (fx, fy): the leg in col,
+        // shaded down its far side, then a rounded paw (in the cat's paw colour) with its toes forward
+        function catLeg(c, cat, hx, hy, fx, fy, col, w = 1.9) {
+            const pal = cat.pal, ax = fx, ay = fy - 1.5, dabs = [];
+            const len = Math.hypot(ax - hx, ay - hy), n = Math.max(1, Math.ceil(len / 0.25));
+            const sh = roundShader(col, w / 2, 1, 0, -0.22, 0.06);
+            for (let k = 0; k <= n; k++) {
+                const f = k / n, r = (w - 0.35 * f) / 2;
+                dabs.push([hx + (ax - hx) * f, hy + (ay - hy) * f, r, sh]);
+            }
+            const ps = roundShader(pal.paws, 0.8, 0.5, 0.86, -0.2, 0.12);
+            for (let k = 0; k <= 4; k++) dabs.push([ax + 0.1 * k, ay + 0.22 * k, 0.8, ps]);
+            dabs.push([fx + 0.5, fy - 0.62, 0.62, ps]);
+            fineDabs(c, dabs);
+            hd(c, fx + 0.5, fy - 0.5, 0.5, 0.5, shade(pal.paws, -0.3));        // a gap between the toes
+        }
+        // A soft shadow under a cat on the ground, centred at (x, y)
+        function catShadow(c, x, y, rx) {
+            for (let j = 0; j < 4; j++) {
+                const v = (j + 0.5) / 4 * 2 - 1, w = rx * Math.sqrt(1 - v * v * 0.8);
+                hd(c, x - w, y + j * 0.5, w * 2, 0.5, 'rgba(15, 10, 6, 0.36)');
+            }
+        }
+        // How far through its stride a walking cat is (0..1), and whether its body is at the top of a bob
+        function catGait(cat) {
+            const period = cat.lastStep >= 0.85 ? 12 : 20;
+            const ph = (cat.animTick % period) / period;
+            return { ph, period, bob: Math.sin(ph * Math.PI * 4 - 0.6) > 0.25 ? 0.5 : 0 };
         }
 
         // A cat's face seen straight on (in the cat house, in a box, or looking at you).
@@ -5617,7 +5751,12 @@
         function drawPixelCat(c, cat, drawX, drawY) {
             if (cat.surface === 'tunnel') return;               // drawn by the tunnel (a bulge, eyes, a tail...)
             if (cat.surface === 'underSofa' || cat.surface === 'treeHouse' || cat.surface === 'box') drawPixelCatSprite(c, cat, drawX, drawY);
-            else spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9, fur: true });
+            else {
+                // glide half a pixel at a time, and bob along with the stride when walking
+                cat.fineBob = cat.isMoving && !(cat.lastStep >= 1.15) && cat.getPose() === 'walking' ? catGait(cat).bob : 0;
+                const dx = Math.round(drawX * RES) / RES - Math.round(drawX), dy = Math.round(drawY * RES) / RES - Math.round(drawY) - cat.fineBob;
+                spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9, fur: true, coat: cat, dx, dy });
+            }
         }
         function drawPixelCatSprite(c, cat, drawX, drawY) {
             c.save();
@@ -5664,7 +5803,10 @@
             detail(x, y, w, h, color) {                         // a fine detail (see hd), shrunk to the fine grid
                 const g = this.real === fxTee ? fxHiG : this.real;
                 g.fillStyle = color;
-                if (w > 0 && h > 0) g.fillRect(...this.map(x, y, w, h, RES));
+                if (!(w > 0 && h > 0)) return;
+                const r = this.map(x, y, w, h, RES);
+                g.fillRect(...r);
+                if (g === fxHiG) fxMark(...r);
             }
         };
 
@@ -5706,16 +5848,15 @@
 
             const pal = cat.pal;
             const t = cat.animTick;
-            const breathe = Math.floor(t / 28) % 2; // Subtle 1px breathing animation
+            // Breathing: the back rises half a pixel on each breath in (see breathHD) rather than the
+            // whole cat hopping a pixel
+            const breathe = 0, inhale = Math.sin(t * Math.PI * 2 / 110 + cat.id) > 0.15;
             const pose = cat.getPose();
 
             // Subtle floor shadow under cat (stays on the ground during pounces;
             // hidden while jumping between surfaces)
             const betweenSurfaces = cat.nav && cat.nav.jump && cat.nav.jump.phase === 'air';
-            if (!betweenSurfaces) {
-                const shrink = Math.min(4, Math.floor(cat.z / 6));
-                pxRect(c, -9 + shrink, 0, 18 - shrink * 2, 2, 'rgba(15, 10, 6, 0.38)');
-            }
+            if (!betweenSurfaces) catShadow(c, 0, 0 + (cat.fineBob || 0), 9 - Math.min(4, cat.z / 6));
             if (cat.z) c.translate(0, -Math.round(cat.z)); // pounce height
 
             // Flip horizontally if facing left (except back-facing window watch)
@@ -5751,8 +5892,8 @@
                 pxRect(c, 8, -7, 1, 1, '#1e140f');
                 pxRect(c, 10, -6, 1, 1, pal.nose);
                 eyeHD(c, cat, 7, -7); noseHD(c, cat, 10, -6); earHD(c, cat, 4, -11); earHD(c, cat, 9, -11);
-                // Tail low and twitching
-                pxRect(c, -11 + wiggle, -3 - wiggle, 4, 2, pal.dark);
+                // Tail low and straight back, the tip twitching
+                catTail(c, cat, -7.2 + wiggle, -3.6 - wiggle * 0.5, Math.PI - 0.08, 6.5, 0, 0.22 * Math.sin(t * 0.35));
 
             } else if (pose === 'leap') {
                 // Fully stretched mid-air leap
@@ -5765,12 +5906,9 @@
                     pxRect(c, -1, -9, 2, 4, pal.stripe);
                     pxRect(c, 3, -9, 2, 3, pal.stripe);
                 }
-                // Hind legs pushed out behind
-                pxRect(c, -11, -6, 4, 2, pal.dark);
-                pxRect(c, -13, -5, 2, 2, pal.paws);
-                // Front legs reaching for the landing
-                pxRect(c, 6, -7 + r, 4, 2, pal.base);
-                pxRect(c, 10, -7 + r * 2, 2, 2, pal.paws);
+                // Hind legs pushed out behind, front legs reaching for the landing
+                catLeg(c, cat, -6, -6, -12.4, -3.6, pal.dark);
+                catLeg(c, cat, 5.6, -6 + r, 10.6, -4.6 + r * 2, pal.base);
                 // Head
                 pxRect(c, 4, -14 + r, 7, 6, pal.base);
                 if (cat.isTuxedo) {
@@ -5786,8 +5924,7 @@
                 pxRect(c, 10, -11 + r, 1, 1, pal.nose);
                 eyeHD(c, cat, 7, -12 + r); noseHD(c, cat, 10, -11 + r); earHD(c, cat, 4, -16 + r); earHD(c, cat, 9, -16 + r);
                 // Tail streaming out behind
-                pxRect(c, -12, -10, 4, 2, pal.dark);
-                pxRect(c, -15, up ? -12 : -11, 3, 2, pal.base);
+                catTail(c, cat, -7.3, -8.4, Math.PI - (up ? 0.55 : 0.35), 8, up ? -0.03 : 0.02);
 
             } else if (pose === 'sleep_curl' || pose === 'interact_cuddle') {
                 // Curled up sleeping croissant pose
@@ -5817,9 +5954,9 @@
                 // White paws tucked in front (paddling away when it's chasing something in its sleep)
                 pxRect(c, 1 + tw, -1, 3, 2, pal.paws);
                 if (runs) pxRect(c, 4, -2, 2, 1, pal.paws);
-                // Curled tail wrapping around (with a twitch of the tip)
-                pxRect(c, -9 - tw, -4 - tw, 3, 3, pal.dark);
-                pxRect(c, -7, -2, 4, 2, pal.base);
+                // Curled tail wrapping round under the chin (with a twitch of the tip)
+                catTail(c, cat, -7.6, -1.6, 1.2, 12, -0.16, 0.1 - tw * 0.2, 1.8, 1.25);
+                if (inhale) breathHD(c, cat, -6.5, -7, 8.5, cat.pattern === 'tabby' ? [-5, -1] : []);
 
             } else if (pose === 'sleep_belly') {
                 // Stretched out on back showing belly & paws in the air!
@@ -5846,8 +5983,9 @@
                 pxRect(c, -3, -7 - paddle, 2, 2, pal.paws);
                 pxRect(c, 3, -7 + paddle, 2, 2, pal.paws);
                 pxRect(c, 5, -7 - pawTwitch, 2, 2, pal.paws);
-                // Tail relaxing out
-                pxRect(c, -13, -3, 4, 2, pal.dark);
+                // Tail relaxing out, the tip curling lazily
+                catTail(c, cat, -8.4, -2.6, Math.PI + 0.05, 6, 0.02, 0.12 * Math.sin(t * 0.05));
+                if (inhale) breathHD(c, cat, -5.5, -5, 11, [], pal.belly);
 
             } else if (pose === 'sleep_loaf') {
                 // Classic Loaf Pose
@@ -5880,6 +6018,9 @@
                 earHD(c, cat, 3, -14 + breathe); earHD(c, cat, 8, -14 + breathe - (lt && !cat.dream.chase ? 1 : 0));
                 // Hint of front paws tucked under chest (kneading away in a dream)
                 pxRect(c, 5 + lt, -1, 3, 1, pal.paws);
+                // the tail, tucked neatly along its side
+                catTail(c, cat, -7.6, -1.2, -0.04, 10, 0, 0, 1.6, 1.3);
+                if (inhale) breathHD(c, cat, -6.5, -8, 9, cat.pattern === 'tabby' ? [-5, -2, 1] : []);
 
             } else if (pose === 'kneading') {
                 // Making biscuits: settled low, eyes shut in bliss, front paws pressing in turn
@@ -5891,8 +6032,10 @@
                     pxRect(c, -5, -8, 2, 5, pal.stripe);
                     pxRect(c, -2, -8, 2, 5, pal.stripe);
                 }
-                pxRect(c, 4, -2 - k, 2, 2 + k, pal.paws);
-                pxRect(c, 7, -2 - (1 - k), 2, 2 + (1 - k), pal.paws);
+                // the two front paws pressing in turn, rising and falling smoothly
+                const kp = t * 0.45 + k * 0;
+                catLeg(c, cat, 5, -3.4, 5, -Math.max(0, Math.sin(kp)) * 1.1, pal.base, 1.7);
+                catLeg(c, cat, 8, -3.4, 8, -Math.max(0, -Math.sin(kp)) * 1.1, pal.base, 1.7);
                 pxRect(c, 3, -13, 7, 6, pal.base);
                 if (cat.isTuxedo) {
                     pxRect(c, 6, -10, 4, 3, pal.belly);
@@ -5905,7 +6048,7 @@
                 pxRect(c, 6, -10, 2, 1, '#1e140f'); // blissful closed eyes
                 pxRect(c, 9, -10, 1, 1, pal.nose);
                 closedEyeHD(c, cat, 6, -10); noseHD(c, cat, 9, -10); earHD(c, cat, 3, -15); earHD(c, cat, 8, -15);
-                pxRect(c, -11, -3, 4, 2, pal.dark);
+                catTail(c, cat, -7.6, -2.7, Math.PI, 6, -0.02, 0.15 * Math.sin(t * 0.06));
 
             } else if (pose === 'scratching' || pose === 'reach' || pose === 'toy_swat') {
                 // Up on the hind legs: raking claws down the post, leaping up at the dot, or batting the toy
@@ -5935,10 +6078,8 @@
                 pxRect(c, 1, -18, 2, 1, '#1e140f'); // concentrating
                 pxRect(c, 4, -17, 1, 1, pal.nose);
                 closedEyeHD(c, cat, 1, -18); noseHD(c, cat, 4, -17); earHD(c, cat, -3, -22); earHD(c, cat, 2, -22);
-                // Tail
-                const tw = Math.round(Math.sin(t * 0.1));
-                pxRect(c, -7, -4 + tw, 3, 2, pal.dark);
-                pxRect(c, -9, -6 + tw, 2, 3, pal.base);
+                // Tail on the floor behind, curling up at the tip
+                catTail(c, cat, -3.6, -2.8, Math.PI - 0.15, 7, 0.08, 0.3 + 0.15 * Math.sin(t * 0.1));
 
             } else if (pose === 'window_watch' || pose === 'watch_hole') {
                 // Sitting facing away towards the window, tail swishing (twitching like mad,
@@ -5969,11 +6110,9 @@
                     pxRect(c, -4, -1, 2, 1, pal.paws);
                     pxRect(c, 2, -1, 2, 1, pal.paws);
                 }
-                // Swishing tail behind
-                const swish = Math.round(Math.sin(t * (chatter ? 0.55 : 0.12)) * 3);
-                pxRect(c, -1, -2, 2, 2, pal.dark);
-                pxRect(c, -1 + swish, 0, 3, 2, pal.dark);
-                pxRect(c, swish * 1.3, 1, 2, 2, pal.base);
+                // Swishing tail, hanging down over the edge
+                const swish = Math.sin(t * (chatter ? 0.55 : 0.12));
+                catTail(c, cat, 0.2, -1.6, Math.PI / 2 - swish * 0.65, 5.5, swish * 0.12, swish * 0.25);
 
             } else if (pose === 'stretching') {
                 // Big arch / bow stretch pose!
@@ -5999,11 +6138,18 @@
                 pxRect(c, 7, -6, 1, 1, pal.nose);
                 closedEyeHD(c, cat, 5, -6); noseHD(c, cat, 7, -6); earHD(c, cat, 3, -10); earHD(c, cat, 6, -10);
                 // Tail straight up!
-                pxRect(c, -9, -15, 2, 6, pal.dark);
+                catTail(c, cat, -8, -9.2, -Math.PI / 2 - 0.12, 6.5, 0.04, 0.2);
 
             } else if (cat.isMoving && cat.lastStep >= 1.15) {
-                // Full gallop: alternating stretched-out and bunched-up frames
-                const extended = Math.floor(t / 4) % 2 === 0;
+                // Full gallop: the body bunches up and stretches out in turn while the legs reach
+                // forward, gather underneath and push off, moving half a pixel at a time
+                const ph = (t % 16) / 16, u = (1 - Math.cos(ph * Math.PI * 2)) / 2;   // 0: gathered up, 1: stretched out
+                const extended = u > 0.5;
+                const lift = p0 => 2 * Math.max(0, Math.sin(Math.PI * 2 * (ph - p0)));
+                const hipX = extended ? -6 : -3.5, shX = extended ? 4.5 : 3, legY = extended ? -4 : -5;
+                // the far legs, a beat behind the near ones
+                catLeg(c, cat, hipX + 0.7, legY + 0.6, -1.6 - 9.4 * u, 1 - lift(0.56), pal.dark, 1.8);
+                catLeg(c, cat, shX - 0.6, legY + 0.6, 2 - 0.2 + 7 * u, 1 - lift(0.06), pal.dark, 1.8);
                 if (extended) {
                     pxRect(c, -8, -8, 15, 5, pal.base);
                     pxRect(c, -6, -4, 11, 1, pal.belly);
@@ -6012,10 +6158,6 @@
                         pxRect(c, -1, -8, 2, 3, pal.stripe);
                         pxRect(c, 3, -8, 2, 2, pal.stripe);
                     }
-                    pxRect(c, 6, -5, 3, 2, pal.base);   // front legs reaching
-                    pxRect(c, 9, -4, 2, 2, pal.paws);
-                    pxRect(c, -10, -5, 3, 2, pal.dark); // hind legs kicking back
-                    pxRect(c, -12, -4, 2, 2, pal.paws);
                 } else {
                     pxRect(c, -6, -10, 12, 6, pal.base);
                     pxRect(c, -4, -5, 8, 1, pal.belly);
@@ -6023,11 +6165,10 @@
                         pxRect(c, -4, -10, 2, 3, pal.stripe);
                         pxRect(c, 0, -10, 2, 3, pal.stripe);
                     }
-                    pxRect(c, 1, -4, 2, 2, pal.base);   // legs gathered underneath
-                    pxRect(c, 3, -2, 2, 2, pal.paws);
-                    pxRect(c, -3, -4, 2, 2, pal.dark);
-                    pxRect(c, -2, -2, 2, 2, pal.paws);
                 }
+                // the near legs
+                catLeg(c, cat, hipX, legY, -0.6 - 10.4 * u, 1 - lift(0.5), pal.base);
+                catLeg(c, cat, shX, legY, 3 + 7.5 * u, 1 - lift(0), pal.base);
                 const hy = extended ? -13 : -15;
                 pxRect(c, 4, hy, 7, 6, pal.base);
                 if (cat.isTuxedo) {
@@ -6041,10 +6182,8 @@
                 pxRect(c, 8, hy + 2, 1, 1, '#1e140f');
                 pxRect(c, 10, hy + 3, 1, 1, pal.nose);
                 eyeHD(c, cat, 7, hy + 2); noseHD(c, cat, 10, hy + 3);
-                // Tail streaming out behind (tucked in closer when bunched up)
-                const tx = extended ? 0 : 3;
-                pxRect(c, -12 + tx, -9, 4, 2, pal.dark);
-                pxRect(c, -15 + tx, extended ? -10 : -9, 3, 2, pal.base);
+                // Tail streaming out behind, rippling with the stride
+                catTail(c, cat, extended ? -7.4 : -5.4, extended ? -7.2 : -8.6, Math.PI - 0.15 - 0.25 * Math.sin(ph * Math.PI * 2), 8.5, 0.02, -0.1);
 
             } else {
                 // Sitting, Walking, Playing, Grooming, Eating, or Interacting
@@ -6063,15 +6202,17 @@
                         pxRect(c, -4, -6 + breathe, 3, 1, pal.stripe);
                         pxRect(c, -4, -4 + breathe, 3, 1, pal.stripe);
                     }
+                    if (inhale) breathHD(c, cat, -4.5, -10, 2.5);
                     // Paws neat in front
                     pxRect(c, -4, -1, 3, 2, pal.paws);
                     pxRect(c, 1, -1, 4, 2, pal.paws);
                     pawHD(c, cat, -3.5, 1); pawHD(c, cat, 2, 1); pawHD(c, cat, 3.5, 1);
 
                     // Grooming raised paw animation
-                    if (pose === 'grooming') {
-                        const lickLift = Math.floor(t / 8) % 2;
-                        pxRect(c, 4, -8 - lickLift, 3, 2, pal.paws);
+                    if (pose === 'grooming') {                           // a paw raised to the mouth: lick, lower, lick
+                        const g = Math.sin(t * 0.22);
+                        catLeg(c, cat, 3.4, -5.4, 5.7 + 0.3 * g, -7.2 + 0.8 * g, pal.base, 1.7);
+                        if (g < -0.35) hd(c, 5, -9.5, 0.5, 0.5, '#f58fb0');      // a little pink tongue
                     }
 
                     // Head
@@ -6080,9 +6221,7 @@
                         // Head turned to look straight out at you
                         drawFaceHead(c, cat, 1, headY - 2);
                         drawFaceEyes(c, cat, 1, headY - 2, (t % 100) < 4 || cat.purrTimer > 0, 0);
-                        const tw = Math.round(Math.sin(t * 0.08) * 1.5);
-                        pxRect(c, -9, -3 + tw, 4, 2, pal.dark);
-                        pxRect(c, -11, -4 + tw, 2, 2, pal.base);
+                        catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 7.5, 0.03, 0.16 + 0.14 * Math.sin(t * 0.06));
                     } else {
                         pxRect(c, -2, headY, 8, 6, pal.base);
                         if (cat.isTuxedo) {
@@ -6094,8 +6233,8 @@
                         pxRect(c, -2, headY - 2, 2, 2, pal.dark);
                         pxRect(c, 4, headY - 2, 2, 2, pal.dark);
                         pxRect(c, -1, headY - 1, 1, 1, pal.light);
-                        // Blinking eyes
-                        const blink = (t % 90) < 5 || cat.purrTimer > 0;
+                        // Blinking eyes (half shut on the way down and up again)
+                        const bt = t % 90, blink = (bt >= 1 && bt <= 3) || cat.purrTimer > 0, half = !blink && (bt === 0 || bt === 4);
                         if (blink) {
                             pxRect(c, 2, headY + 2, 2, 1, '#1e140f');
                         } else {
@@ -6103,8 +6242,8 @@
                             pxRect(c, 3, headY + 2, 1, 1, '#1e140f');
                         }
                         pxRect(c, 5, headY + 3, 1, 1, pal.nose);
-                        if (blink) closedEyeHD(c, cat, 2, headY + 2); else eyeHD(c, cat, 2, headY + 2);
-                        noseHD(c, cat, 5, headY + 3, pose !== 'proud'); earHD(c, cat, -2, headY - 2); earHD(c, cat, 4, headY - 2);
+                        if (blink) closedEyeHD(c, cat, 2, headY + 2); else eyeHD(c, cat, 2, headY + 2, half);
+                        noseHD(c, cat, 5, headY + 3, pose !== 'proud'); earHD(c, cat, -2, headY - 2, earFlick(cat)); earHD(c, cat, 4, headY - 2);
 
                         if (pose === 'proud') {
                             // The caught mouse, dangling from its mouth
@@ -6115,16 +6254,29 @@
                             pxRect(c, 6 + sway, headY + 7, 1, 3, '#f9a8d4');
                         }
 
-                        // Tail curling gently on floor
-                        const tailWave = Math.round(Math.sin(t * 0.08) * 1.5);
-                        pxRect(c, -9, -3 + tailWave, 4, 2, pal.dark);
-                        pxRect(c, -11, -4 + tailWave, 2, 2, pal.base);
+                        // Tail curled round on the floor, the tip lifting and settling
+                        catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 7.5, 0.03, 0.16 + 0.14 * Math.sin(t * 0.06));
                     }
 
                 } else {
-                    // Standing / Walking / Eating / Playing posture
-                    const stepCycle = isWalking ? Math.floor(t / (cat.lastStep >= 0.85 ? 3 : 5)) % 4 : 0; // trot vs amble
-                    const bodyBob = isWalking && (stepCycle % 2 === 1) ? -1 : 0;
+                    // Standing / Walking / Eating / Playing posture. Walking, the legs step in turn the
+                    // way a cat's do (back left, front left, back right, front right), each paw lifting
+                    // as it swings forward, and the body rises and falls with the stride (catGait; the
+                    // bob itself is done by nudging the whole sprite, so the paws are kept on the ground).
+                    const gait = catGait(cat), sole = 1 + (cat.fineBob || 0), bodyBob = 0;
+                    const trot = cat.lastStep >= 0.85, stride = trot ? 1.5 : 1.15, raise = trot ? 1.2 : 0.9;
+                    const legAt = (hip, off) => {
+                        const a = Math.PI * 2 * ((gait.ph + off) % 1);
+                        return isWalking ? [hip - Math.cos(a) * stride, sole - Math.max(0, Math.sin(a)) * raise] : [hip, sole];
+                    };
+                    const batting = pose === 'pat_up' || (isBatting && Math.floor(t / 10) % 2 === 0);
+                    // the tail first (it's behind everything): up like a question mark, swaying as it goes
+                    const sway = Math.sin(t * (isBatting ? 0.3 : 0.15)) * (isBatting ? 0.2 : 0.12);
+                    if (isBowingHead) catTail(c, cat, -6.6, -7.2, -2.55 + sway, 8, 0.04, 0.2);
+                    else catTail(c, cat, -6.6, -7.3, (isBatting ? -1.8 : -2.05) + sway, 8.5, 0.03, 0.2);
+                    // the far legs, behind the body
+                    catLeg(c, cat, -5, -1.9, ...legAt(-5, 0), pal.dark, 1.8);
+                    catLeg(c, cat, 3, -1.9, ...legAt(3, 0.25), pal.dark, 1.8);
 
                     // Main torso
                     pxRect(c, -7, -8 + bodyBob, 13, 6, pal.base);
@@ -6140,36 +6292,12 @@
                         pxRect(c, 2, -8 + bodyBob, 2, 3, pal.stripe);
                     }
 
-                    // 4 Animated Legs + White/Colored Paws
-                    const legOffsets = [
-                        [0, 0, 0, 0],
-                        [-1, 1, 1, -1],
-                        [0, 0, 0, 0],
-                        [1, -1, -1, 1]
-                    ][stepCycle];
-
-                    // Back left leg
-                    pxRect(c, -6 + legOffsets[0], -3, 2, 2, pal.dark);
-                    pxRect(c, -6 + legOffsets[0], -1, 2, 2, pal.paws);
-                    pawHD(c, cat, -6 + legOffsets[0], 1);
-                    // Back right leg
-                    pxRect(c, -3 + legOffsets[1], -3, 2, 2, pal.base);
-                    pxRect(c, -3 + legOffsets[1], -1, 2, 2, pal.paws);
-                    pawHD(c, cat, -3 + legOffsets[1], 1);
-                    // Front left leg
-                    pxRect(c, 2 + legOffsets[2], -3, 2, 2, pal.dark);
-                    pxRect(c, 2 + legOffsets[2], -1, 2, 2, pal.paws);
-                    pawHD(c, cat, 2 + legOffsets[2], 1);
-
-                    // Front right leg (or batting paw!)
-                    if (pose === 'pat_up' || (isBatting && Math.floor(t / 10) % 2 === 0)) {
-                        pxRect(c, 5, -6, 4, 2, pal.base);
-                        pxRect(c, 8, -7, 2, 2, pal.paws);
-                    } else {
-                        pxRect(c, 4 + legOffsets[3], -3, 2, 2, pal.base);
-                        pxRect(c, 4 + legOffsets[3], -1, 2, 2, pal.paws);
-                        pawHD(c, cat, 4 + legOffsets[3], 1);
-                    }
+                    // the near legs, in front (or a paw up, batting at something)
+                    catLeg(c, cat, -2, -2.6, ...legAt(-2, 0.5), pal.base);
+                    if (batting) {
+                        const up = Math.sin(t * 0.32) * 0.8;
+                        catLeg(c, cat, 4.6, -3.6, 8.6, -4.4 - up, pal.base);
+                    } else catLeg(c, cat, 5, -2.6, ...legAt(5, 0.75), pal.base);
 
                     // Head position (lowered if eating/drinking)
                     const headX = isBowingHead ? 4 : 2;
@@ -6185,8 +6313,8 @@
                     pxRect(c, headX + 5, headY - 2, 2, 2, pal.dark);
                     pxRect(c, headX + 1, headY - 1, 1, 1, pal.light);
 
-                    // Eyes & Nose
-                    const blink = (t % 80) < 4 || isBowingHead || cat.purrTimer > 0;
+                    // Eyes & Nose (half shut on the way into a blink and out of it)
+                    const bt = t % 80, blink = (bt >= 1 && bt <= 2) || isBowingHead || cat.purrTimer > 0, half = !blink && (bt === 0 || bt === 3);
                     if (blink) {
                         pxRect(c, headX + 3, headY + 2, 2, 1, '#1e140f');
                     } else {
@@ -6194,13 +6322,9 @@
                         pxRect(c, headX + 4, headY + 2, 1, 1, '#1e140f');
                     }
                     pxRect(c, headX + 6, headY + 3, 1, 1, pal.nose);
-                    if (blink) closedEyeHD(c, cat, headX + 3, headY + 2); else eyeHD(c, cat, headX + 3, headY + 2);
-                    noseHD(c, cat, headX + 6, headY + 3, !isBowingHead); earHD(c, cat, headX, headY - 2); earHD(c, cat, headX + 5, headY - 2);
-
-                    // Expressive upright / swishing tail
-                    const tailSway = Math.round(Math.sin(t * 0.15) * 1.5);
-                    pxRect(c, -9, -10 + bodyBob, 2, 4, pal.dark);
-                    pxRect(c, -10 + tailSway, -13 + bodyBob, 2, 4, pal.base);
+                    if (blink) closedEyeHD(c, cat, headX + 3, headY + 2); else eyeHD(c, cat, headX + 3, headY + 2, half);
+                    noseHD(c, cat, headX + 6, headY + 3, !isBowingHead);
+                    earHD(c, cat, headX, headY - 2, !isWalking && earFlick(cat)); earHD(c, cat, headX + 5, headY - 2);
                 }
             }
 
@@ -10291,8 +10415,9 @@
         // room pixel and leaves out the fine details (see hd): it's blown up to double size the
         // way the classic pixel-art scalers do it (EPX, also known as Scale2x), which rounds off
         // the steps in every diagonal and curve. The other is full resolution, details and all;
-        // wherever it differs from the plain blown-up picture (eyes, noses, whiskers and the like)
-        // it wins.
+        // wherever it differs from the plain blown-up picture it wins, and so does anything drawn
+        // only at full resolution (eyes, noses, whiskers, and the smooth tails and legs): those are
+        // also marked on a third canvas, the mask.
         const FX_BOX = 96, FX_OX = 48, FX_OY = 72, FB = FX_BOX * RES;
         function fxCanvas(n) {
             const cv = document.createElement('canvas');
@@ -10301,64 +10426,124 @@
         }
         const fxLoG = fxCanvas(FX_BOX).getContext('2d', { willReadFrequently: true });
         const fxHiG = fxCanvas(FB).getContext('2d', { willReadFrequently: true });
+        const fxMaskG = fxCanvas(FB).getContext('2d', { willReadFrequently: true });
         const fxOutG = fxCanvas(FB).getContext('2d');
         const fxImg = fxOutG.createImageData(FB, FB);
         const fxPix = new Uint32Array(fxImg.data.buffer);
         const fxSolid = new Uint8Array(FB * FB);
         const fxEdge = new Uint32Array(FB * FB);
         const fxDetail = new Uint8Array(FB * FB);
-        // A stand-in drawing context that passes everything on to both canvases
+        // A stand-in drawing context that passes everything on to both canvases (and moves, clips
+        // and saves the mask along with them, so marks land in the right place)
+        const FX_MASK_TOO = new Set(['save', 'restore', 'translate', 'scale', 'rotate', 'transform', 'setTransform', 'resetTransform', 'beginPath', 'rect', 'clip', 'moveTo', 'lineTo', 'closePath', 'arc']);
         const fxTeeFns = {};
         const fxTee = new Proxy({}, {
             get(_, k) {
                 const v = fxHiG[k];
                 if (typeof v !== 'function') return v;
-                return fxTeeFns[k] || (fxTeeFns[k] = (...a) => { fxLoG[k](...a); return fxHiG[k](...a); });
+                return fxTeeFns[k] || (fxTeeFns[k] = FX_MASK_TOO.has(k)
+                    ? (...a) => { fxLoG[k](...a); fxMaskG[k](...a); return fxHiG[k](...a); }
+                    : (...a) => { fxLoG[k](...a); return fxHiG[k](...a); });
             },
             set(_, k, v) { fxLoG[k] = v; fxHiG[k] = v; return true; }
         });
+        // Mark a rectangle (in the sprite's own coordinates) as drawn at full resolution: on the
+        // mask, and in the box of fine pixels that the full-resolution drawing reaches
+        const fxReach = [0, 0, 0, 0];
+        function fxMark(x, y, w, h) {
+            fxMaskG.fillRect(x, y, w, h);
+            const m = fxHiG.getTransform();
+            const ax = m.a * x + m.e, bx = m.a * (x + w) + m.e, ay = m.d * y + m.f, by = m.d * (y + h) + m.f;
+            fxReach[0] = Math.min(fxReach[0], ax, bx); fxReach[1] = Math.min(fxReach[1], ay, by);
+            fxReach[2] = Math.max(fxReach[2], ax, bx); fxReach[3] = Math.max(fxReach[3], ay, by);
+        }
         let fxBusy = false;
+        // Coats with patches (calico, tortoiseshell) or no markings at all (solid colours): every
+        // pose draws plain tabby stripes, and here they're turned into the right markings, from a
+        // smooth noise that stays put on the sprite as it moves about
+        const U32_CACHE = new Map();
+        function u32(col) {
+            let v = U32_CACHE.get(col);
+            if (v === undefined) { const [r, g, b] = rgbOf(col); v = ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0; U32_CACHE.set(col, v); }
+            return v;
+        }
+        function valueNoise(x, y, seed) {
+            const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+            const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+            const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed), c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
+            return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+        }
+        // (x, y) here are fine pixels on the sprite's scratch canvas, which moves with the sprite, so
+        // the markings stay put on the cat however it moves about the room
+        function coatPattern(cat, img, X0, Y0, X1, Y1) {
+            const pat = cat.pattern, pal = cat.pal;
+            if (pat !== 'calico' && pat !== 'tortie' && pat !== 'solid') return;
+            const base = u32(pal.base), stripe = u32(pal.stripe), dark = u32(pal.dark), F = FB;
+            for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
+                const p = y * F + x, c = img[p];
+                if ((c !== base && c !== stripe) || fxDetail[p]) continue;
+                if (pat === 'solid') { img[p] = base; continue; }
+                const u = x / 11, v = y / 9;
+                if (pat === 'calico') {                                         // white, with patches of ginger and black
+                    const a = valueNoise(u, v, 40 + cat.id), b = valueNoise(u + 17, v + 9, 50 + cat.id);
+                    img[p] = a > 0.6 ? stripe : b > 0.62 ? dark : base;
+                } else {                                                        // tortie: dark, mottled and brindled with ginger
+                    const a = valueNoise(u * 1.4, v * 1.4, 60 + cat.id) + (hash2(x, y, 61) - 0.5) * 0.3;
+                    img[p] = a > 0.58 ? stripe : base;
+                }
+            }
+        }
         // Sprites that don't change from frame to frame (the treasures on the mantelpiece, say)
         // can pass opt.cache, a key naming exactly how they look: they're shaded once and reused
         const fxCache = new Map();
-        // draw(g) paints the sprite in room coordinates; (wx, wy) is roughly where it stands
+        // draw(g) paints the sprite in room coordinates; (wx, wy) is roughly where it stands.
+        // opt.dx and opt.dy nudge the finished sprite by part of a room pixel (a fine pixel or two),
+        // so things can glide half a pixel at a time.
         function spriteFX(target, wx, wy, draw, opt = {}) {
             if (fxBusy) { draw(target); return; }
             const ox = Math.round(wx) - FX_OX, oy = Math.round(wy) - FX_OY;
+            const nx = ox + (opt.dx || 0), ny = oy + (opt.dy || 0);
             if (opt.cache) {
                 const hit = fxCache.get(opt.cache);
-                if (hit) { if (hit.cv) target.drawImage(hit.cv, ox + hit.dx, oy + hit.dy, hit.w, hit.h); return; }
+                if (hit) { if (hit.cv) target.drawImage(hit.cv, nx + hit.dx, ny + hit.dy, hit.w, hit.h); return; }
             }
             fxBusy = true;
             const real = ctx, realSnap = SNAP;
+            fxReach[0] = fxReach[1] = FB; fxReach[2] = fxReach[3] = -1;
             try {
-                [[fxLoG, 1], [fxHiG, RES]].forEach(([g, s]) => {
+                [[fxLoG, 1], [fxHiG, RES], [fxMaskG, RES]].forEach(([g, s]) => {
                     g.setTransform(1, 0, 0, 1, 0, 0);
                     g.globalAlpha = 1;
                     g.clearRect(0, 0, g.canvas.width, g.canvas.height);
                     g.imageSmoothingEnabled = false;
                     g.setTransform(s, 0, 0, s, -ox * s, -oy * s);
                 });
+                fxMaskG.fillStyle = '#ffffff';
                 SNAP = 1;                                   // both drawings on the same whole-pixel grid (hd draws finer)
                 ctx = fxTee;
                 draw(fxTee);
             } finally {
                 ctx = real;
                 SNAP = realSnap;
-                [fxLoG, fxHiG].forEach(g => { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; });
+                [fxLoG, fxHiG, fxMaskG].forEach(g => { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; });
                 fxBusy = false;
             }
-            // where was anything drawn?
+            // where was anything drawn? (on the low-res drawing, and by the full-resolution marks)
             const B = FX_BOX, lo = new Uint32Array(fxLoG.getImageData(0, 0, B, B).data.buffer);
             let x0 = B, y0 = B, x1 = -1, y1 = -1;
             for (let p = 0, y = 0; y < B; y++) for (let x = 0; x < B; x++, p++) {
                 if (lo[p] >>> 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
             }
+            if (fxReach[2] >= 0) {
+                x0 = Math.min(x0, Math.floor(fxReach[0] / RES)); y0 = Math.min(y0, Math.floor(fxReach[1] / RES));
+                x1 = Math.max(x1, Math.ceil(fxReach[2] / RES)); y1 = Math.max(y1, Math.ceil(fxReach[3] / RES));
+            }
             if (x1 < 0) { if (opt.cache) fxCache.set(opt.cache, { cv: null }); return; }
             // a margin for the outline and any details poking out past the basic shape
-            x0 = Math.max(0, x0 - 3); y0 = Math.max(0, y0 - 3); x1 = Math.min(B - 1, x1 + 3); y1 = Math.min(B - 1, y1 + 3);
+            x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2); x1 = Math.min(B - 1, x1 + 2); y1 = Math.min(B - 1, y1 + 2);
             const R = RES, fx0 = x0 * R, fy0 = y0 * R, fw = (x1 - x0 + 1) * R, fh = (y1 - y0 + 1) * R;
             const hi = new Uint32Array(fxHiG.getImageData(fx0, fy0, fw, fh).data.buffer);
+            const mask = fxReach[2] >= 0 ? new Uint32Array(fxMaskG.getImageData(fx0, fy0, fw, fh).data.buffer) : null;
             // 1. blow the low-res drawing up (EPX), and lay the full-resolution details over it
             const F = FB, img = fxEdge, epx = opt.round !== false && R === 2;
             const L = (x, y) => (x < 0 || y < 0 || x >= B || y >= B) ? 0 : lo[y * B + x];
@@ -10375,12 +10560,13 @@
                 const hx = (x - x0) * R, hy = (y - y0) * R, q = hy * fw + hx, p = (y * R) * F + x * R;
                 // (on the full-resolution drawing, fine details are whatever doesn't match the low-res one)
                 for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
-                    const h = hi[q + j * fw + i], k = p + j * F + i;
-                    img[k] = h !== P ? h : R === 2 ? (j ? (i ? e4 : e3) : (i ? e2 : e1)) : P;
-                    fxDetail[k] = h !== P ? 1 : 0;
+                    const h = hi[q + j * fw + i], k = p + j * F + i, d = h !== P || (mask && mask[q + j * fw + i] >>> 24);
+                    img[k] = d ? h : R === 2 ? (j ? (i ? e4 : e3) : (i ? e2 : e1)) : P;
+                    fxDetail[k] = d ? 1 : 0;
                 }
             }
             const X0 = fx0, Y0 = fy0, X1 = fx0 + fw - 1, Y1 = fy0 + fh - 1;
+            if (opt.coat) coatPattern(opt.coat, img, X0, Y0, X1, Y1);
             if (opt.fur) {
                 // Fur: where one colour of coat meets another, a few strands of each poke across the
                 // edge, so stripes, bibs and socks look furry rather than ruled. (The strands are
@@ -10389,7 +10575,7 @@
                 const coat = (x, y) => (O(x, y) >>> 24) === 255 && !fxDetail[y * F + x];
                 for (let y = Y0 + 1; y < Y1; y++) for (let x = X0 + 1; x < X1; x++) {
                     if (!coat(x, y)) continue;
-                    const c = O(x, y), lx = x - ox * R, ly = y - oy * R;
+                    const c = O(x, y), lx = x, ly = y;                    // (on the scratch canvas, so they move with the sprite)
                     let n = 0;
                     if (coat(x, y - 1) && O(x, y - 1) !== c && O(x, y + 1) === c && hash2(lx, 3, 91) < 0.34) n = O(x, y - 1);
                     else if (coat(x, y + 1) && O(x, y + 1) !== c && O(x, y - 1) === c && hash2(lx, 5, 92) < 0.22) n = O(x, y + 1);
@@ -10440,7 +10626,7 @@
                 } else fxPix[p] = c;                        // soft things (shadows) pass straight through
             }
             fxOutG.putImageData(fxImg, 0, 0, fx0, fy0, fw, fh);
-            target.drawImage(fxOutG.canvas, fx0, fy0, fw, fh, ox + fx0 / R, oy + fy0 / R, fw / R, fh / R);
+            target.drawImage(fxOutG.canvas, fx0, fy0, fw, fh, nx + fx0 / R, ny + fy0 / R, fw / R, fh / R);
             if (opt.cache) {
                 const cv = document.createElement('canvas');
                 cv.width = fw; cv.height = fh;
@@ -11433,11 +11619,64 @@
             hd(ctx, bx + 1, by + 0.5, 1, 0.5, '#fff1f4');
         }
 
+        // Rain on the window: beads of water on the glass, now and then one gathering itself and
+        // running down, leaving a faint wet trail
+        const glassDrops = [];
+        function drawGlassDrops() {
+            if (outside.precip !== 'rain') return;
+            if (!glassDrops.length) for (let i = 0; i < 42; i++) {
+                const [px, py, pw, ph] = WIN_PANES[i % 4];
+                glassDrops.push({ pane: i % 4, x: px + 1 + Math.random() * (pw - 3), y: py + 1 + Math.random() * (ph - 3), big: Math.random() < 0.35,
+                                  run: Math.random() < 0.3 ? 0.04 + Math.random() * 0.12 : 0, trail: 0 });
+            }
+            glassDrops.forEach(d => {
+                const [px, py, pw, ph] = WIN_PANES[d.pane];
+                if (d.run) {
+                    if (hash2(Math.floor(globalTick / 20), d.x * 10, 83) < 0.75) { d.y += d.run * (outside.storm ? 2 : 1); d.trail = Math.min(8, d.trail + d.run); }
+                    if (d.y > py + ph - 2) { d.y = py + 1 + Math.random() * 6; d.x = px + 1 + Math.random() * (pw - 3); d.trail = 0; }
+                } else if (Math.random() < 0.0008) d.run = 0.05 + Math.random() * 0.1;      // a bead getting too heavy
+                for (let k = 0.5; k < d.trail; k += 0.5) hd(ctx, d.x, d.y - k, 0.5, 0.5, 'rgba(210, 228, 255, 0.12)');
+                const s = d.big ? 1 : 0.5;
+                hd(ctx, d.x, d.y, s, s, 'rgba(205, 225, 255, 0.5)');
+                hd(ctx, d.x, d.y, 0.5, 0.5, 'rgba(255, 255, 255, 0.75)');
+                if (d.big) hd(ctx, d.x, d.y + 1, 1, 0.5, 'rgba(20, 35, 60, 0.35)');
+            });
+        }
+
+        // Wisps of steam curling up from the mug of tea
+        function drawSteam(x, y) {
+            const t = globalTick;
+            for (let w = 0; w < 2; w++) for (let j = 0; j < 14; j++) {
+                const up = j * 0.5, f = j / 14, sway = Math.sin(j * 0.45 - t * 0.05 + w * 2.4) * (0.4 + f * 1.4);
+                const a = 0.32 * (1 - f) * (0.7 + 0.3 * Math.sin(t * 0.07 + w));
+                if (hash2(j, Math.floor(t / 6) + w * 31, 84) < 0.18) continue;              // the wisp breaking up
+                hd(ctx, x + w * 1 + sway, y - up, 0.5, 0.5, `rgba(255, 255, 255, ${a.toFixed(3)})`);
+            }
+        }
+
+        // Dust motes drifting in the sunlight from the window, on a bright day
+        const dustMotes = [];
+        function drawDustMotes() {
+            const o = outside;
+            if (o.phase !== 'day' || o.precip || o.cloud > 0.7) return;
+            if (!dustMotes.length) for (let i = 0; i < 28; i++) {
+                const v = Math.random();
+                dustMotes.push({ x: 88 + v * 18 + Math.random() * 74, y: 100 + v * 48, p: Math.random() * 7, q: Math.random() * 7 });
+            }
+            const t = globalTick;
+            dustMotes.forEach((m, i) => {
+                const a = 0.18 + 0.32 * (0.5 + 0.5 * Math.sin(t * 0.02 + m.p * 3));
+                const x = m.x + Math.sin(t * 0.0045 + m.p) * 3.5, y = m.y + Math.sin(t * 0.0035 + m.q) * 4 + Math.sin(t * 0.011 + i) * 0.6;
+                hd(ctx, x, y, 0.5, 0.5, `rgba(255, 244, 210, ${a.toFixed(3)})`);
+            });
+        }
+
         function drawRoomEnvironment() {
             const { x: winX, y: winY, w: winW, h: winH } = WIN;
             // 1. The view outside, then the glass, then the room itself painted over the top
             drawOutside(winX, winY, winW, winH);
             drawGlass();
+            drawGlassDrops();
             blit(ctx, roomBackdrop(), 0, 0);
             if (outside.season === 'winter' || (outside.temp !== undefined && outside.temp !== null && outside.temp <= 1)) drawFrost(winX, winY, winW, winH);
             if (outside.festive === 'halloween') drawHalloweenBats();
@@ -11454,12 +11693,13 @@
             drawLamp();
             if (outside.festive === 'christmas') drawChristmasTree();
             drawBowls();
-            // 5. Treasures on the mantelpiece and windowsill (while they're still up there)
+            // 5. Treasures on the mantelpiece and windowsill (while they're still up there), and the tea's steam
             KNOCKABLES.forEach(k => {
                 if (!knockableUp(k) || !knockablePresent(k)) return;
                 const still = k.state === 'home' && !(k.wobble > 0) && k.x === Math.round(k.x);
                 const key = still && ['k', k.id, k.y, fireplaceLit, Math.floor(globalTick / 8) % 2].join();
                 spriteFX(ctx, k.x, k.y, () => drawKnockable(k), still ? { cache: key } : {});
+                if (k.id === 'mug' && k.state === 'home') drawSteam(k.x - 1, k.y - 7);
             });
         }
 
@@ -11607,6 +11847,8 @@
                 ctx.fillStyle = lg;
                 ctx.fillRect(0, 0, W, H);
             }
+
+            drawDustMotes();
 
             // Warm Golden Glow from Fireplace & Floor Lamp
             ctx.save();
