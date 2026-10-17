@@ -321,6 +321,9 @@
                 <button id="btnBox" onclick="triggerBox()" class="pixel-btn px-1 py-0.5 rounded text-sm leading-tight flex flex-col items-center justify-center text-center text-amber-100" title="If it fits, I sits">
                     <span class="text-base leading-none">📦</span><span id="boxLabel">Cardboard Box</span>
                 </button>
+                <button id="btnTunnel" onclick="triggerTunnel()" class="pixel-btn px-1 py-0.5 rounded text-sm leading-tight flex flex-col items-center justify-center text-center text-amber-100" title="A crinkly tunnel to dash through, lurk in and pounce out of">
+                    <span class="text-base leading-none">🌀</span><span id="tunnelLabel">Cat Tunnel</span>
+                </button>
                 <button onclick="triggerFeeder()" class="pixel-btn px-1 py-0.5 rounded text-sm leading-tight flex flex-col items-center justify-center text-center text-amber-100" title="Top up the bird feeder outside the window">
                     <span class="text-base leading-none">🐦</span><span>Fill Feeder</span>
                 </button>
@@ -918,8 +921,29 @@
                 NAV_EDGES.push({ from: link.b, to: link.a,
                     cands: pairs.map(p => ({ fx: p.bx, fy: p.by, tx: p.ax, ty: p.ay })) });
             });
+            // Links between the same two surfaces (the box's two sides, the tunnel's two ends) become one
+            // edge with all their takeoff points, so a cat uses whichever suits its route best
+            const merged = new Map();
+            for (const e of NAV_EDGES) {
+                const k = e.from + '>' + e.to;
+                if (merged.has(k)) merged.get(k).cands.push(...e.cands);
+                else merged.set(k, e);
+            }
+            NAV_EDGES.length = 0;
+            NAV_EDGES.push(...merged.values());
         }
         buildNavEdges();
+
+        // The cat tunnel (see THE CAT TUNNEL) lies along the front of the room by the hearth, its
+        // openings at x1 and x2. Cats jump in from just outside an opening (floorX) to just inside
+        // (innerX), and cats on the floor walk round behind it (keeping clear of TUNNEL_BODY).
+        const TUNNEL = { x1: 242, x2: 292, top: 169, y: 181, peepX: 267 };
+        const TUNNEL_ENDS = [
+            { side: -1, mouthX: 242, innerX: 251, floorX: 234, waitX: 229, waitY: 171 },
+            { side: 1,  mouthX: 292, innerX: 283, floorX: 300, waitX: 305, waitY: 171 }
+        ];
+        const TUNNEL_BODY = [251, 267, 283];
+        const tunnel = { out: false, leaving: false, wanted: true, retryAt: 0, shake: 0, crinkleAt: 0, dashes: 0 };
 
         // Places cats like to settle, and the poses that suit each one
         const RESTFUL = ['sleep_curl', 'sleep_loaf', 'sleep_belly', 'sit_relax', 'grooming'];
@@ -1448,6 +1472,26 @@
             }
 
             // A tiny 'tink' as a paw taps something on a shelf
+            // The crinkle of the fabric tunnel: a rustle of tiny crackles
+            playCrinkle(vol = 1) {
+                if (!this.enabled || !this.ctx) return;
+                const sr = this.ctx.sampleRate;
+                if (!this.crinkleBuf) {
+                    const len = Math.floor(sr * 0.32), b = this.ctx.createBuffer(1, len, sr), d = b.getChannelData(0);
+                    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.06 ? 1 : 0.12) * Math.pow(1 - i / len, 1.5);
+                    this.crinkleBuf = b;
+                }
+                const now = this.ctx.currentTime;
+                const src = this.ctx.createBufferSource(), hp = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
+                src.buffer = this.crinkleBuf;
+                src.playbackRate.value = 0.75 + Math.random() * 0.5;
+                hp.type = 'highpass';
+                hp.frequency.value = 2200;
+                g.gain.value = 0.06 * vol;
+                src.connect(hp); hp.connect(g); g.connect(this.ctx.destination);
+                src.start(now);
+            }
+
             playTink(kind) {
                 if (!this.enabled || !this.ctx) return;
                 const now = this.ctx.currentTime;
@@ -1944,7 +1988,7 @@
             love: 1 / (20 * 3600)
         };
 
-        const SLEEPY_STATES = ['sleep_curl', 'sleep_loaf', 'sleep_belly', 'interact_cuddle', 'cuddle_pile', 'house_sleep'];
+        const SLEEPY_STATES = ['sleep_curl', 'sleep_loaf', 'sleep_belly', 'interact_cuddle', 'cuddle_pile', 'house_sleep', 'tunnel_nap'];
         const HOUSE_SPOT = { surface: 'treeHouse', x: 44 };
         const TOY_SPOT = { surface: 'treeMid', x: 37, facing: -1 }; // middle perch, within reach of the toy
 
@@ -1954,10 +1998,16 @@
             { id: 'sofaR',   surface: 'underSofa', x: 134, name: 'under the sofa',       eyes: [0, -3],   stare: { dy: 14, back: true } },
             { id: 'curtain', surface: 'curtain',   x: 167, name: 'behind the curtain',   eyes: [0, -9],   stare: { floorX: 165, floorY: 151, back: true } },
             { id: 'house',   surface: 'treeHouse', x: 44,  name: 'in the cat house',     eyes: [0, -9],   stare: { floorX: 44, floorY: 160, back: true } },
-            { id: 'box',     surface: 'box',       x: 0,   name: 'in the cardboard box', eyes: [0, -12],  stare: { side: true } }
+            { id: 'box',     surface: 'box',       x: 0,   name: 'in the cardboard box', eyes: [0, -12],  stare: { side: true } },
+            { id: 'tunnelL', surface: 'tunnel',    x: 251, name: 'in the tunnel',        eyes: [-9, -7],  stare: { floorX: 224, floorY: 175 } },
+            { id: 'tunnelR', surface: 'tunnel',    x: 283, name: 'in the tunnel',        eyes: [9, -7],   stare: { floorX: 306, floorY: 175 } }
         ];
         function hideSpotX(sp) { return sp.surface === 'box' ? box.x : sp.x; }
-        function hideSpotOpen(sp) { return sp.surface !== 'box' || (box.active && !box.leaving); }
+        function hideSpotOpen(sp) {
+            if (sp.surface === 'box') return box.active && !box.leaving;
+            if (sp.surface === 'tunnel') return tunnel.out && !tunnel.leaving;
+            return true;
+        }
         let lastScaryBang = -1e9;   // when the last firework or thunderclap went off
 
         // Gaits: an amble when wandering, a trot when there's somewhere to be, a gallop when chasing
@@ -2058,6 +2108,11 @@
         }
 
         function updateMouse() {
+            moveMouse();
+            // it scampers along behind the tunnel, not through it
+            if (tunnel.out && mouse.active && mouse.x > TUNNEL.x1 - 6 && mouse.x < TUNNEL.x2 + 6 && mouse.y > TUNNEL.top + 5) mouse.y = TUNNEL.top + 5;
+        }
+        function moveMouse() {
             const m = mouse;
             updateMouseLead();
             if (!m.active) return;
@@ -2613,7 +2668,8 @@
                 }
                 // Under the sofa or behind the curtain: wriggle back out
                 this.settleHere('sit_relax', 60);
-                const out = this.surface === 'underSofa' ? { surface: 'floor', x: this.x, y: 157 } : this.surface === 'curtain' ? { surface: 'sill', x: 150 } : null;
+                const out = this.surface === 'underSofa' ? { surface: 'floor', x: this.x, y: 157 } : this.surface === 'curtain' ? { surface: 'sill', x: 150 }
+                          : this.surface === 'tunnel' ? { surface: 'floor', x: tunnelEndAt(this.x).floorX, y: TUNNEL.y } : null;
                 if (out && this.isSpotFree(out.surface, out.x, surfacePointY(out.surface, out.y), { planning: true }) &&
                     this.goTo(out, found ? 'sit_relax' : 'grooming', 'rest', { speed: TROT_SPEED })) {
                     this.nav.label = found ? 'You found me!' : 'Coming out of hiding';
@@ -2846,6 +2902,9 @@
                         if (h.phase === 'chase') return this.isMoving ? 'walking' : 'stand';
                         return 'sit_relax';
                     }
+                    case 'tunnel_bat': return this.batSwat > 0 ? 'toy_swat' : 'crouch';
+                    case 'tunnel_nap': return 'sleep_curl';
+                    case 'tunnel_lurk': case 'tunnel_peek': return 'crouch';
                     default: return this.state;
                 }
             }
@@ -2876,6 +2935,9 @@
                         case 'chaser': return this.playTimer > 0 ? { label: 'Ready, steady...', emoji: '👀' } : { label: `Chasing ${n}!`, emoji: '💨' };
                         case 'counter': return { label: 'Tagged! Counting to three...', emoji: '🙈' };
                         case 'wrestler': return { label: `Play-fighting with ${n}`, emoji: '🐾' };
+                        case 'tunnel_wait': return this.tunnelPlan && this.tunnelPlan.kind === 'cutoff'
+                            ? { label: `Lying in wait for ${n} at the end of the tunnel`, emoji: '👀' }
+                            : { label: `Waiting to follow ${n} through the tunnel`, emoji: '🌀' };
                     }
                 }
                 if (this.pounce && this.pounce.landTimer === 0) {
@@ -2886,6 +2948,8 @@
                     const j = this.nav.jump;
                     if (j && j.crawl) return j.to === 'underSofa' ? { label: 'Squeezing under the sofa', emoji: '🐾' } : { label: 'Wriggling out from under the sofa', emoji: '🐾' };
                     if (j && j.to === 'curtain') return { label: 'Slipping behind the curtain', emoji: '🐾' };
+                    if (j && j.to === 'tunnel') return { label: 'Diving into the tunnel!', emoji: '🌀' };
+                    if (j && j.from === 'tunnel') return { label: 'Bursting out of the tunnel!', emoji: '🌀' };
                     if (j && j.to === 'box') return { label: 'Hopping into the box!', emoji: '📦' };
                     if (j && j.from === 'box') return { label: 'Hopping out of the box', emoji: '📦' };
                     if (j) return j.up ? { label: 'Leaping up!', emoji: '⬆️' } : { label: 'Hopping down', emoji: '⬇️' };
@@ -2944,6 +3008,10 @@
                     'box_sit': { label: 'If it fits, I sits!', emoji: '📦' },
                     'box_sleep': { label: 'Napping in the box', emoji: '💤' },
                     'box_wait': { label: 'Waiting for a turn in the box', emoji: '😾' },
+                    'tunnel_lurk': { label: 'Lurking in the tunnel, ready to pounce', emoji: '👀' },
+                    'tunnel_peek': { label: 'Peeping out of the top of the tunnel', emoji: '🌀' },
+                    'tunnel_nap': { label: 'Napping in the tunnel, tail out', emoji: '💤' },
+                    'tunnel_bat': { label: `Bopping ${this.batTarget ? this.batTarget.name : 'somebody'} on the head!`, emoji: '🐾' },
                     'ask_food': { label: 'Meowing for food!', emoji: '🐟' },
                     'ask_water': { label: 'Asking for fresh water', emoji: '💧' },
                     'ask_fuss': { label: 'Wants a fuss! Click to pet', emoji: '💕' },
@@ -3027,6 +3095,7 @@
 
             isSpotFree(surface, x, y, opts = {}) {
                 if (surface === 'floor' && box.active && spaceOverlap('floor', x, y, box.x, box.y) < 1) return false;
+                if (surface === 'floor' && tunnel.out && inTunnelWay(x, y)) return false;
                 for (const o of cats) {
                     if (o === this || (opts.ignore && opts.ignore.has(o))) continue;
                     for (const p of o.occupiedPoints(opts.planning)) {
@@ -3062,6 +3131,7 @@
             obstaclesOn(surface) {
                 const pts = [];
                 if (surface === 'floor' && box.active) pts.push({ cat: null, x: box.x, y: box.y }); // walk round the box
+                if (surface === 'floor' && tunnel.out) TUNNEL_BODY.forEach(bx => pts.push({ cat: null, x: bx, y: TUNNEL.y }));   // ...and the tunnel
                 for (const o of cats) {
                     if (o === this) continue;
                     if (o.surface === surface) pts.push({ cat: o, x: o.x, y: o.y });
@@ -3331,12 +3401,13 @@
                     const dx = step.x - this.x, dy = step.y - this.y;
                     if (Math.abs(dx) >= 2) this.facing = dx > 0 ? 1 : -1;
                     const boxHop = step.to === 'box' || this.surface === 'box';  // up and over the side of the box
+                    const dive = step.to === 'tunnel' || this.surface === 'tunnel';  // a low, quick dive in (or out)
                     const crawl = step.to === 'underSofa' || this.surface === 'underSofa';  // flat on its belly, under the sofa
                     nav.jump = {
                         phase: 'crouch', timer: nav.speed >= RUN_SPEED ? 5 : 10, t: 0, to: step.to, from: this.surface,
                         x0: this.x, y0: this.y, x1: step.x, y1: step.y, up: dy < 0 || step.to === 'box', crawl,
-                        bump: boxHop ? 13 : crawl ? 0.01 : 0,
-                        dur: Math.round(12 + Math.abs(dy) * 0.28 + Math.abs(dx) * 0.12) + (boxHop ? 6 : 0)
+                        bump: boxHop ? 13 : crawl ? 0.01 : dive ? 2 : 0,
+                        dur: Math.round(12 + Math.abs(dy) * 0.28 + Math.abs(dx) * 0.12) + (boxHop ? 6 : 0) - (dive ? 3 : 0)
                     };
                     return;
                 }
@@ -3360,6 +3431,7 @@
                         this.x = j.x1;
                         this.y = j.y1;
                         this.surface = j.to;
+                        if (j.to === 'tunnel' || j.from === 'tunnel') { tunnel.shake = Math.max(tunnel.shake, 8); sound.playCrinkle(1); }
                         j.phase = 'land';
                         j.timer = 6;
                     }
@@ -3433,13 +3505,50 @@
                 if (st === 'play_start') {
                     const f = this.playWith;
                     this.playWith = null;
-                    if (f && this.surface === 'floor' && this.canPlayWith(f)) { this.startGame(f); return; }
+                    const ambush = this.tunnelAmbush === f;
+                    this.tunnelAmbush = null;
+                    if (f && this.surface === 'floor' && this.canPlayWith(f)) {
+                        this.startGame(f, ambush ? 'ambush' : null);
+                        if (ambush && this.game) this.playRole = 'pouncer';   // bursting out of the tunnel WAS the pounce
+                        if (ambush) logDiary(`${this.name} sprang out of the tunnel at ${f.name}`, '🌀', { key: 'tamb' + this.id + f.id, every: 8, kind: 'play' });
+                        return;
+                    }
                     st = 'sit_relax';
                 }
                 if (st === 'play_yarn') {
                     this.state = 'play_yarn';
                     this.stateTimer = this.getDurationForState(st);
                     this.claim = null; // roams after the ball
+                    return;
+                }
+                if (st === 'tunnel_dive') {              // at the mouth of the tunnel: in it goes
+                    if (this.tunnelDash()) return;
+                    st = 'sit_relax';
+                }
+                if (st === 'tunnel_burst') {             // through to the far end... and out!
+                    if (this.tunnelExit()) return;
+                    st = this.surface === 'tunnel' ? 'tunnel_lurk' : 'sit_relax';
+                }
+                if (st === 'tunnel_out') { this.afterTunnel(); return; }
+                if (['tunnel_lurk', 'tunnel_peek', 'tunnel_nap'].includes(st)) {
+                    if (this.surface !== 'tunnel') st = 'sit_relax';
+                    else {
+                        const e = tunnelEndAt(this.x);
+                        this.settleHere(st, this.getDurationForState(st));
+                        this.facing = st === 'tunnel_nap' ? -e.side : e.side;    // a nap is nose in, tail out; lurking is eyes out
+                        this.houseLook = 0;
+                        this.lookTimer = 30;
+                        this.peek = st === 'tunnel_peek' ? { up: 0, down: 0, bops: 0, nextDuck: globalTick + 200 + Math.floor(Math.random() * 200), batter: null, asked: false } : null;
+                        if (st === 'tunnel_nap') logDiary(`${this.name} curled up for a nap in the tunnel, tail sticking out`, '🌀', { key: 'tnap' + this.id, every: 30 });
+                        if (st === 'tunnel_peek') logDiary(`${this.name} popped up through the peephole in the tunnel`, '🌀', { key: 'tpeek' + this.id, every: 20 });
+                        return;
+                    }
+                }
+                if (st === 'tunnel_bat') {
+                    this.settleHere('tunnel_bat', this.getDurationForState(st));
+                    this.batSwat = 0;
+                    this.batNext = 15;
+                    this.facing = TUNNEL.peepX > this.x ? 1 : -1;
                     return;
                 }
                 if (st === 'box_race') {                 // got there first? hop straight in
@@ -3476,6 +3585,7 @@
                 }
                 if (st === 'hiding' && this.hide) {         // tucked away out of sight
                     this.settleHere('hiding', 99999);
+                    if (this.surface === 'tunnel') this.facing = tunnelEndAt(this.x).side;     // peering out of the end
                     const h = this.hide;
                     h.since = globalTick;
                     h.peek = 0;
@@ -3536,6 +3646,8 @@
                 this.hunt = null;
                 this.zoom = null;
                 this.pendingTask = null;
+                this.batTarget = null;
+                this.tunnelPlan = null;
                 if (this.nav && this.nav.jump) { this.nav.afterJump = fn; return; }
                 if (this.pounce) { this.pounce.after = fn; return; }
                 this.releasePartner();
@@ -4067,6 +4179,13 @@
                 } else if (this.state === 'mischief') {
                     this.updateMischief();               // runs its own clock
                     return;
+                } else if (this.state === 'tunnel_lurk') {
+                    if (this.updateTunnelLurk()) return;
+                } else if (this.state === 'tunnel_peek') {
+                    this.updateTunnelPeek();
+                } else if (this.state === 'tunnel_bat') {
+                    this.updateTunnelBat();
+                    if (this.state !== 'tunnel_bat') return;
                 } else if (this.state === 'box_wait') {
                     if (!box.active || box.leaving) { this.chooseNextBehavior(); return; }
                     this.facing = box.x > this.x ? 1 : -1;
@@ -4129,6 +4248,10 @@
                 if (st === 'house_peek') return 300 + Math.floor(Math.random() * 240);
                 if (st === 'play_toy') return 360 + Math.floor(Math.random() * 240);
                 if (st === 'box_sit') return 420 + Math.floor(Math.random() * 300);
+                if (st === 'tunnel_nap') return Math.round((420 + Math.floor(Math.random() * 320)) * nap);
+                if (st === 'tunnel_lurk') return 420 + Math.floor(Math.random() * 420);
+                if (st === 'tunnel_peek') return 320 + Math.floor(Math.random() * 300);
+                if (st === 'tunnel_bat') return 900;
                 if (st === 'box_wait') return 480 + Math.floor(Math.random() * 360);
                 if (st.startsWith('ask_')) return 420 + Math.floor(Math.random() * 240);
                 if (st === 'catnip_sniff') return 60;
@@ -4169,6 +4292,12 @@
                     if (this.state === 'box_sleep' && Math.random() < 0.45) { this.settleHere('box_sit', 200 + Math.floor(Math.random() * 200)); return; }
                 }
 
+                // In the tunnel: out of the far end at a gallop, or another little snooze
+                if (this.surface === 'tunnel' && !tunnel.leaving) {
+                    if (this.state === 'tunnel_nap' && Math.random() < 0.35) { this.settleHere('tunnel_nap', this.getDurationForState('tunnel_nap')); return; }
+                    if (Math.random() < 0.55 && this.tunnelDash()) return;
+                }
+
                 // Nobody came: a little sulk
                 if (this.state.startsWith('ask_')) {
                     this.askCooldown[this.state.slice(4)] = globalTick + 90 * 60;   // won't ask again for a while
@@ -4179,7 +4308,7 @@
                 if (this.state === 'box_wait') this.say('Fine, keep your box', '😾', 160);
 
                 // 1. Just woke up -> do a big stretch first!
-                if (wasSleeping && this.surface !== 'treeHouse' && this.surface !== 'box' && Math.random() < 0.65) {
+                if (wasSleeping && this.surface !== 'treeHouse' && this.surface !== 'box' && this.surface !== 'tunnel' && Math.random() < 0.65) {
                     this.settleHere('stretching', 90);
                     if (Math.random() < 0.3) sound.playMeow(this.voice, 'mrrp');   // a yawny little trill
                     return;
@@ -4211,6 +4340,7 @@
                 // 4. A box in the room is irresistible; a shelf of breakables, likewise;
                 //    and now and then it's time to come and ask you for a fuss
                 if (box.active && !box.leaving && this.surface !== 'box' && Math.random() < 0.12 && this.goBox()) return;
+                if (tunnel.out && !tunnel.leaving && this.surface !== 'tunnel' && Math.random() < 0.11 * Math.min(1.3, energy) * this.playMult && this.goTunnel()) return;
                 if (Math.random() < 0.03 && this.goMischief()) return;
                 if (Math.random() < 0.025 && this.goAskFuss()) return;
                 if (outside.phase !== 'night' && !screensaver && Math.random() < 0.012 && startSpontaneousHide(this)) return;
@@ -4273,6 +4403,7 @@
             }
 
             goRest(sleepy = false) {
+                if (tunnel.out && !tunnel.leaving && Math.random() < (sleepy ? 0.1 : 0.05) && this.goTunnel('nap')) return true;
                 for (const spot of shuffled(REST_SPOTS)) {
                     const y = surfacePointY(spot.surface, spot.y);
                     if (!this.isSpotFree(spot.surface, spot.x, y, { planning: true })) continue;
@@ -4428,7 +4559,7 @@
                 if (o.partnerCat || o.awaitingPartner) return false;
                 return !['eating', 'drinking', 'proud', 'cuddle_pile', 'play_toy', 'scratching', 'kneading',
                          'watch_hole', 'zoomies', 'play_yarn', 'stretching', 'playing', 'mischief',
-                         'box_wait', 'ask_food', 'ask_water', 'ask_fuss', 'ask_treat', 'brushed', 'treat',
+                         'box_wait', 'tunnel_bat', 'ask_food', 'ask_water', 'ask_fuss', 'ask_treat', 'brushed', 'treat',
                          'catnip_sniff', 'catnip_roll', 'hiding', 'hint_stare'].includes(o.state);
             }
 
@@ -4451,14 +4582,15 @@
                 return false;
             }
 
-            startGame(friend) {
+            startGame(friend, forced = null) {
                 const asleep = SLEEPY_STATES.includes(friend.state);
-                const mode = asleep ? 'ambush' : pick(['ambush', 'chase', 'chase', 'wrestle']);
+                const mode = forced || (asleep ? 'ambush' : pick(['ambush', 'chase', 'chase', 'wrestle']));
                 const g = {
                     a: this, b: friend, mode, start: globalTick, swaps: 0,
                     maxSwaps: 2 + Math.floor(Math.random() * 4),
                     chaseUntil: globalTick + 480 + Math.floor(Math.random() * 480), wrestleEnd: 0,
-                    lead: this, leadT: globalTick, over: false
+                    lead: this, leadT: globalTick, over: false,
+                    tunnelFan: Math.random() < 0.6          // will the one being chased make for the tunnel?
                 };
                 this.game = friend.game = g;
                 if (mode === 'ambush') {
@@ -4484,6 +4616,7 @@
                 this.playTimer = timer;
                 this.playWiggle = 0;
                 this.playBlocked = 0;
+                this.tunnelPlan = null;
                 this.state = 'playing';
                 this.claim = null;          // roaming about
             }
@@ -4563,12 +4696,17 @@
             fleeFrom(o, speed) {
                 const F = SURFACES.floor;
                 let best = null, bestScore = -Infinity;
+                // a cat that likes the tunnel heads for it when it's being chased nearby
+                let te = tunnel.out && !tunnel.leaving && this.game && this.game.tunnelFan ? tunnelEndAt(this.x) : null;
+                const teD = te ? Math.hypot(te.floorX - this.x, TUNNEL.y - this.y) : Infinity;
+                if (teD > 100 || teD < 1) te = null;
                 for (let k = 0; k < 12; k++) {
                     const a = k / 12 * Math.PI * 2;
                     const ux = Math.cos(a), uy = Math.sin(a) * 0.6;
                     const px = this.x + ux * 30, py = this.y + uy * 30;
                     const cx = clamp(px, F.x1 + 6, F.x2 - 6), cy = clamp(py, F.y1, F.y2);
                     let score = Math.hypot(cx - o.x, (cy - o.y) * 1.5) - Math.hypot(px - cx, py - cy) * 1.5;
+                    if (te) score += ((ux * (te.floorX - this.x) + uy * (TUNNEL.y - this.y)) / teD) * 14;
                     for (const c of cats) {
                         if (c !== this && c !== o && c.surface === 'floor') score -= Math.max(0, 30 - Math.hypot(c.x - cx, c.y - cy));
                     }
@@ -4618,6 +4756,7 @@
                 switch (this.playRole) {
                     case 'stalker': {
                         this.playPose = 'crouch';
+                        if (this.playBlocked > 150 || age > 900) { this.finishGame('quit'); return; }   // can't get at them
                         if (Math.abs(dx) > 1) this.facing = dx > 0 ? 1 : -1;
                         if (this.playWiggle > 0) {                     // butt wiggle... then POUNCE
                             if (--this.playWiggle === 0) {
@@ -4645,6 +4784,7 @@
                             if (Math.abs(dx) > 1) this.facing = dx > 0 ? 1 : -1;
                             return;
                         }
+                        if (this.tryTunnelEscape(o)) return;            // in one end, out the other
                         // fast cats let slower friends nearly catch them
                         const speed = Math.min(this.speedMult, o.speedMult) * RUN_SPEED * 0.9;
                         this.fleeFrom(o, speed);
@@ -4652,6 +4792,10 @@
                         return;
                     }
                     case 'chaser': {
+                        if (o.tunnelRun && (o.surface === 'tunnel' || !o.surface || (o.nav && o.nav.purpose === 'tunnel'))) {
+                            this.onRunnerTunnel(o.tunnelRun.exit);            // they've shot into the tunnel!
+                            if (this.playRole === 'tunnel_wait') return;
+                        }
                         if (this.playTimer > 0) {
                             this.playTimer--;
                             this.playPose = 'crouch';
@@ -4666,7 +4810,7 @@
                             this.setPlay('runner');
                             return;
                         }
-                        const res = this.stepFloorToward(o.x, o.y, RUN_SPEED * this.speedMult);
+                        const res = this.stepFloorRound(o.x, o.y, RUN_SPEED * this.speedMult);
                         this.playPose = 'walking';
                         this.playBlocked = res === 'blocked' ? this.playBlocked + 1 : 0;
                         // Gaining on them? If not for a good while (something in the way), call it a day
@@ -4674,6 +4818,9 @@
                         if (this.playBlocked > 90 || this.chaseStall > 180 || globalTick > g.chaseUntil + 600) this.endChase();
                         return;
                     }
+                    case 'tunnel_wait':                                // they're in the tunnel: follow, or cut them off
+                        this.updateTunnelWait(o);
+                        return;
                     case 'counter':                                    // tagged: count to three, then chase
                         this.playPose = 'sit_relax';
                         if (Math.abs(dx) > 1) this.facing = dx > 0 ? 1 : -1;
@@ -4743,6 +4890,256 @@
                 logDiary(`${this.name} and ${o.name} had a play-fight, then made up with a groom`, '👅', { key: 'wrestle' + Math.min(this.id, o.id) + Math.max(this.id, o.id), every: 8, kind: 'play' });
                 this.facing = o.x > this.x ? 1 : -1;
                 o.facing = -this.facing;
+            }
+
+            // ---------- The tunnel ----------
+
+            // Off to the tunnel: to dash through it, lurk in it, peep out of the top, or nap
+            goTunnel(kind = null) {
+                if (!tunnel.out || tunnel.leaving || this.surface === 'tunnel') return false;
+                if (!kind) {
+                    const sleepy = catEnergy() < 0.8 || this.needs.energy < 0.4;
+                    const w = { dash: 4.5, lurk: 2.2, peek: 2, nap: sleepy ? 3 : 1 };
+                    let r = Math.random() * (w.dash + w.lurk + w.peek + w.nap);
+                    kind = (r -= w.dash) < 0 ? 'dash' : (r -= w.lurk) < 0 ? 'lurk' : (r -= w.peek) < 0 ? 'peek' : 'nap';
+                }
+                if (kind === 'dash') {
+                    if (!tunnelRunFree(this)) return false;
+                    const near = this.surface === 'floor' && this.x > TUNNEL.x2 ? TUNNEL_ENDS[1]
+                               : this.surface === 'floor' && this.x < TUNNEL.x1 ? TUNNEL_ENDS[0] : pick(TUNNEL_ENDS);
+                    for (const e of [near, otherTunnelEnd(near)]) {
+                        if (!this.isSpotFree('floor', e.floorX, TUNNEL.y, { planning: true })) continue;
+                        if (this.goTo({ surface: 'floor', x: e.floorX, y: TUNNEL.y, facing: -e.side }, 'tunnel_dive', 'tunnel', { speed: TROT_SPEED })) {
+                            this.nav.label = 'Off to the tunnel!';
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                const x = kind === 'peek' ? TUNNEL.peepX : pick(TUNNEL_ENDS).innerX;
+                if (!this.isSpotFree('tunnel', x, TUNNEL.y, { planning: true })) return false;
+                const st = { lurk: 'tunnel_lurk', peek: 'tunnel_peek', nap: 'tunnel_nap' }[kind];
+                if (!this.goTo({ surface: 'tunnel', x }, st, kind === 'nap' ? 'rest' : 'tunnel', { speed: TROT_SPEED })) return false;
+                this.nav.label = { lurk: 'Sneaking into the tunnel...', peek: 'Into the tunnel...', nap: 'Off for a nap in the tunnel' }[kind];
+                return true;
+            }
+
+            // In at this end, and full pelt along to the other
+            tunnelDash(speed = RUN_SPEED) {
+                if (!tunnelRunFree(this)) return false;
+                const far = otherTunnelEnd(tunnelEndAt(this.x));
+                if (!this.goTo({ surface: 'tunnel', x: far.innerX }, 'tunnel_burst', 'tunnel', { speed })) return false;
+                this.nav.label = 'Zooming through the tunnel!';
+                return true;
+            }
+
+            // Out of the nearer end (or the other one, if somebody's sitting in the way)
+            tunnelExit() {
+                if (this.surface !== 'tunnel') return false;
+                const near = tunnelEndAt(this.x);
+                for (const e of [near, otherTunnelEnd(near)]) {
+                    if (!this.isSpotFree('floor', e.floorX, TUNNEL.y, { planning: true })) continue;
+                    if (this.goTo({ surface: 'floor', x: e.floorX, y: TUNNEL.y, facing: e.side }, 'tunnel_out', 'tunnel', { speed: RUN_SPEED })) {
+                        this.nav.label = 'Bursting out of the tunnel!';
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Out the other end: back into the game of chase, or a little celebration
+            afterTunnel() {
+                const run = this.tunnelRun, g = this.game;
+                this.tunnelRun = null;
+                this.tunnelCool = globalTick + 420;             // not straight back in again
+                const o = g && this.playOther();
+                if (run && g && run.game === g && !g.over && o && o.game === g) {
+                    if (this.playRole !== 'runner') { this.setPlay('chaser'); return; }   // followed them through
+                    this.setPlay('runner');
+                    // ...straight into the paws of the one lying in wait at this end
+                    const p = o.tunnelPlan;
+                    if (o.playRole === 'tunnel_wait' && p && p.kind === 'cutoff' && !o.pounce && Math.hypot(o.x - this.x, o.y - this.y) < 34) {
+                        this.playGrace = 0;
+                        o.setPlay('chaser');
+                        const dx = this.x - o.x, dy = this.y - o.y, d = Math.hypot(dx, dy) || 1;
+                        if (d > 16 && o.startPounce(this.x - dx / d * 14, this.y - dy / d * 14, 7, 0, 'leap')) o.pounce.label = { label: 'Gotcha!', emoji: '⚡' };
+                        else o.say('Gotcha!', '⚡', 90, true);
+                        spawnParticle('alert', this.x + this.facing * 3, this.y - 20);
+                        logDiary(`${o.name} lay in wait at the end of the tunnel and pounced on ${this.name}`, '🌀', { key: 'tcut' + o.id + this.id, every: 6, kind: 'play' });
+                    }
+                    return;
+                }
+                if (this.game) this.leaveGame();
+                tunnel.dashes++;
+                logDiary(`${this.name} dashed through the tunnel`, '🌀', { key: 'tdash' + this.id, every: 12, kind: 'play' });
+                if (Math.random() < 0.3 && this.goZoomies(2 + Math.floor(Math.random() * 2), 'tunnel')) return;
+                this.settleHere(Math.random() < 0.5 ? 'grooming' : 'sit_relax', 100 + Math.floor(Math.random() * 100));
+                if (Math.random() < 0.45) this.say(pick(['Wheee!', 'Again! Again!', 'Crinkle crinkle!']), '🌀', 140);
+            }
+
+            // Lurking just inside, eyes gleaming: a friend who settles down nearby gets pounced on
+            updateTunnelLurk() {
+                this.updateHouseLook();
+                if (this.nav || this.animTick % 12 !== 0 || tunnel.leaving) return false;
+                const e = tunnelEndAt(this.x);
+                if (this.facing !== e.side) return false;
+                const prey = cats.filter(o => o !== this && this.canPlayWith(o) && Math.hypot(o.x - e.floorX, (o.y - TUNNEL.y) * 1.3) < 56);
+                if (!prey.length || Math.random() > 0.3) return false;
+                const o = pick(prey);
+                if (!this.isSpotFree('floor', e.floorX, TUNNEL.y, { planning: true })) return false;
+                if (!this.goTo({ surface: 'floor', x: e.floorX, y: TUNNEL.y, facing: o.x > e.floorX ? 1 : -1 }, 'play_start', 'play', { speed: RUN_SPEED })) return false;
+                this.playWith = o;
+                this.tunnelAmbush = o;
+                this.nav.label = `Ambushing ${o.name}!`;
+                return true;
+            }
+
+            // Head up through the peephole, looking about; ducking down now and then (or when bopped)
+            updateTunnelPeek() {
+                const p = this.peek;
+                if (!p) return;
+                this.updateHouseLook();
+                if (p.batter && p.batter.batTarget !== this) p.batter = null;
+                if (p.down > 0) { p.down--; p.up = Math.max(0, p.up - 0.25); }
+                else {
+                    p.up = Math.min(1, p.up + 0.12);
+                    if (globalTick >= p.nextDuck && !p.batter) {
+                        p.down = 30 + Math.floor(Math.random() * 40);
+                        p.nextDuck = globalTick + p.down + 120 + Math.floor(Math.random() * 200);
+                    }
+                }
+                // Somebody's bound to come and bop that head
+                if (!p.batter && !p.asked && p.up > 0.9 && this.animTick % 30 === 0 && Math.random() < 0.35) {
+                    p.asked = true;
+                    const keen = shuffled(cats.filter(o => o !== this && o.surface === 'floor' && this.canPlayWith(o) &&
+                                                          !SLEEPY_STATES.includes(o.state) && Math.hypot(o.x - TUNNEL.peepX, o.y - TUNNEL.y) < 130));
+                    for (const o of keen) if (o.goBatPeeker(this)) { p.batter = o; break; }
+                }
+            }
+
+            goBatPeeker(peeker) {
+                for (const dx of shuffled([-9, 9])) {
+                    const gx = TUNNEL.peepX + dx, gy = TUNNEL.top + 3;                // just behind the tunnel
+                    if (!this.isSpotFree('floor', gx, gy, { planning: true })) continue;
+                    if (this.goTo({ surface: 'floor', x: gx, y: gy, facing: dx < 0 ? 1 : -1 }, 'tunnel_bat', 'play', { speed: TROT_SPEED })) {
+                        this.batTarget = peeker;
+                        this.nav.label = `Off to bop ${peeker.name} on the head!`;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Whack-a-mole: rear up and bop the head poking out of the peephole
+            updateTunnelBat() {
+                const p = this.batTarget, pk = p && p.peek;
+                if (!p || p.surface !== 'tunnel' || p.state !== 'tunnel_peek' || p.nav || !pk) {
+                    this.batTarget = null;
+                    this.settleHere('sit_relax', 80 + Math.floor(Math.random() * 60));
+                    this.say('Where did it go?', '❓', 120);
+                    return;
+                }
+                this.facing = TUNNEL.peepX > this.x ? 1 : -1;
+                if (this.batSwat > 0) {
+                    if (--this.batSwat === 5 && pk.up > 0.6) {                          // bop!
+                        pk.down = 26 + Math.floor(Math.random() * 30);
+                        pk.bops = (pk.bops || 0) + 1;
+                        sound.playPop();
+                        spawnParticle('star', TUNNEL.peepX, TUNNEL.top - 10);
+                        if (pk.bops === 1) logDiary(`${this.name} played whack-a-mole with ${p.name} at the tunnel`, '🌀', { key: 'whack' + this.id + p.id, every: 10, kind: 'play' });
+                        if (pk.bops >= 3 + (p.id + this.id) % 3) this.finishBat(p);
+                    }
+                    return;
+                }
+                if (--this.batNext <= 0) {
+                    if (pk.up > 0.5 && pk.down === 0) { this.batSwat = 12; this.batNext = 24 + Math.floor(Math.random() * 30); }
+                    else this.batNext = 8;                                             // waiting for it to pop back up...
+                }
+            }
+
+            // Enough bops: usually the bopped one bursts out of the tunnel and gives chase
+            finishBat(p) {
+                this.batTarget = null;
+                if (p.peek) p.peek.batter = null;
+                this.settleHere('sit_relax', 140);
+                if (Math.random() < 0.6 && p.tunnelExit()) {
+                    p.nav.arrivalState = 'play_start';
+                    p.nav.purpose = 'play';
+                    p.nav.label = `Out after ${this.name}!`;
+                    p.playWith = this;
+                    p.tunnelAmbush = this;
+                    this.say('Uh oh...', '🙀', 120);
+                } else this.say('Got you!', '😹', 140);
+            }
+
+            // Being chased past the tunnel? Straight in, and out of the other end
+            tryTunnelEscape(chaser) {
+                if (!tunnel.out || tunnel.leaving || this.surface !== 'floor' || !this.game || this.game.over || globalTick < (this.tunnelCool || 0)) return false;
+                const e = tunnelEndAt(this.x);
+                const dMe = Math.hypot(this.x - e.floorX, (this.y - TUNNEL.y) * 1.2);
+                if (dMe > 24 || Math.hypot(chaser.x - e.floorX, chaser.y - TUNNEL.y) < dMe + 8) return false;
+                if (Math.random() > 0.3 || !tunnelRunFree(this)) return false;
+                const far = otherTunnelEnd(e);
+                if (!this.goTo({ surface: 'tunnel', x: far.innerX }, 'tunnel_burst', 'tunnel', { speed: RUN_SPEED })) return false;
+                this.tunnelRun = { game: this.game, exit: far };
+                this.nav.label = `Escaping ${chaser.name} through the tunnel!`;
+                chaser.onRunnerTunnel(far);
+                return true;
+            }
+
+            // Across the floor to (tx, ty), going round behind the tunnel if it's in the way
+            stepFloorRound(tx, ty, speed) {
+                const wy = TUNNEL.top - 6;
+                const crossing = tunnel.out && (this.x - TUNNEL.peepX) * (tx - TUNNEL.peepX) < 0 && Math.max(this.y, ty) > wy &&
+                                 Math.min(this.x, tx) < TUNNEL.x2 + 12 && Math.max(this.x, tx) > TUNNEL.x1 - 12;
+                if (!crossing) return this.stepFloorToward(tx, ty, speed);
+                const res = this.y > wy + 0.5 ? this.stepFloorToward(this.x, wy, speed)    // up out of the way first...
+                                              : this.stepFloorToward(tx, wy, speed);       // ...then along behind it
+                return res === 'arrived' ? 'moving' : res;
+            }
+
+            // The one we're chasing has shot into the tunnel: follow them in, or race round to the other end
+            onRunnerTunnel(exit) {
+                if (this.playRole !== 'chaser' || this.pounce) return;
+                // already round by the far end? Then it's obvious: lie in wait for them there
+                const entry = otherTunnelEnd(exit);
+                const nearExit = Math.hypot(this.x - exit.floorX, this.y - TUNNEL.y) < Math.hypot(this.x - entry.floorX, this.y - TUNNEL.y);
+                this.tunnelPlan = { kind: nearExit || Math.random() < 0.5 ? 'cutoff' : 'follow', entry, exit, t: 0 };
+                this.playRole = 'tunnel_wait';
+                this.playBlocked = 0;
+            }
+
+            updateTunnelWait(o) {
+                const p = this.tunnelPlan;
+                if (!p || ++p.t > 480 || !tunnel.out || tunnel.leaving) { this.tunnelPlan = null; this.setPlay('chaser'); return; }
+                const runnerIn = o.surface === 'tunnel' || !o.surface || (o.nav && o.nav.purpose === 'tunnel');
+                if (p.kind === 'cutoff') {
+                    if (Math.hypot(p.exit.waitX - this.x, p.exit.waitY - this.y) > 1) {
+                        const res = this.stepFloorRound(p.exit.waitX, p.exit.waitY, RUN_SPEED * this.speedMult);
+                        this.playPose = 'walking';
+                        if (res === 'blocked' && ++this.playBlocked > 60) { this.tunnelPlan = null; this.setPlay('chaser'); return; }
+                    } else {
+                        this.playPose = 'crouch';                                    // ready...
+                        this.facing = p.exit.floorX > this.x ? 1 : -1;
+                    }
+                    if (!runnerIn) { this.tunnelPlan = null; this.setPlay('chaser'); }   // too late: out it came
+                    return;
+                }
+                // follow: to the mouth, a wiggle, then in after them as soon as there's room
+                if (Math.hypot(p.entry.floorX - this.x, TUNNEL.y - this.y) > 1) {
+                    const res = this.stepFloorRound(p.entry.floorX, TUNNEL.y, RUN_SPEED * this.speedMult);
+                    this.playPose = 'walking';
+                    if ((res === 'blocked' && ++this.playBlocked > 60) || p.t > 240) { this.tunnelPlan = null; this.setPlay('chaser'); }
+                    return;
+                }
+                this.playPose = 'crouch';
+                this.facing = -p.entry.side;
+                if (p.t % 6 === 0 && tunnelRunFree(this) &&
+                    this.goTo({ surface: 'tunnel', x: p.exit.innerX }, 'tunnel_burst', 'tunnel', { speed: RUN_SPEED })) {
+                    this.tunnelRun = { game: this.game, exit: p.exit };
+                    this.tunnelPlan = null;
+                    this.nav.label = `After ${o.name}, through the tunnel!`;
+                }
             }
 
             goToy() {
@@ -4898,7 +5295,7 @@
             tryStartInteraction() {
                 const F = SURFACES.floor;
                 const busy = ['play_yarn', 'stretching', 'eating', 'drinking', 'cuddle_pile', 'hunting', 'proud', 'zoomies', 'scratching', 'kneading', 'watch_hole', 'playing',
-                              'mischief', 'box_wait', 'ask_food', 'ask_water', 'ask_fuss', 'ask_treat', 'brushed', 'treat',
+                              'mischief', 'box_wait', 'tunnel_bat', 'ask_food', 'ask_water', 'ask_fuss', 'ask_treat', 'brushed', 'treat',
                               'catnip_sniff', 'catnip_roll', 'hiding', 'hint_stare'];
                 const friends = weightedShuffle(cats.filter(o =>
                     o !== this && o.surface === 'floor' && !o.nav && !o.pounce && !o.partnerCat && !o.game &&
@@ -5094,12 +5491,19 @@
 
         // Draws any of the 3 cats in their current pose with distinct markings
         function drawPixelCat(c, cat, drawX, drawY) {
+            if (cat.surface === 'tunnel') return;               // drawn by the tunnel (a bulge, eyes, a tail...)
             if (cat.surface === 'underSofa' || cat.surface === 'treeHouse' || cat.surface === 'box') drawPixelCatSprite(c, cat, drawX, drawY);
             else spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9 });
         }
         function drawPixelCatSprite(c, cat, drawX, drawY) {
             c.save();
             const j = cat.nav && cat.nav.jump;
+            if (j && (j.to === 'tunnel' || j.from === 'tunnel')) {   // diving into the tunnel (or out): the part inside is hidden
+                c.beginPath();
+                c.rect(0, 0, TUNNEL.x1 - 5, H);
+                c.rect(TUNNEL.x2 + 6, 0, W - TUNNEL.x2 - 6, H);
+                c.clip();
+            }
             if (j && j.crawl && j.phase === 'air') {          // squeezing under the sofa: the sofa hides the top half
                 c.beginPath();
                 c.rect(0, 137.5, W, H);
@@ -5944,6 +6348,7 @@
         function spawnBox(byUser = false) {
             if (box.active) return false;
             for (const s of shuffled(BOX_SPOTS)) {
+                if (tunnel.out && s.x > 214 && s.y > 168) continue;            // that's where the tunnel is
                 // Room for it: nobody sitting there, standing in the way or heading there
                 let roomy = true;
                 for (const c of cats) {
@@ -6068,6 +6473,271 @@
             pxRect(ctx, -7, -7, 1, 4, '#7c5a35');                   // 'this way up'
             pxRect(ctx, -8, -6, 1, 1, '#7c5a35');
             pxRect(ctx, -6, -6, 1, 1, '#7c5a35');
+            ctx.restore();
+        }
+
+        // ------------------------------------------------------------------
+        // THE CAT TUNNEL: a crinkly fabric tunnel lying along the front of the room
+        // by the hearth. Cats dive in one end and shoot out of the other, lurk just
+        // inside to ambush whoever settles nearby, pop their heads up through the
+        // peephole on top (where a friend will try to bop them), nap in it with a
+        // tail sticking out, and hide in it. In a game of chase, the one being
+        // chased will dash through it, with the chaser hot on its heels... or
+        // nipping round to lie in wait at the other end. Put it out or away from
+        // the activities panel. (Its size and place are with the room's
+        // navigation; while it's out it's a 'tunnel' surface like any other.)
+        // ------------------------------------------------------------------
+        function tunnelEndAt(x) { return Math.abs(x - TUNNEL.x1) <= Math.abs(x - TUNNEL.x2) ? TUNNEL_ENDS[0] : TUNNEL_ENDS[1]; }
+        function otherTunnelEnd(e) { return e === TUNNEL_ENDS[0] ? TUNNEL_ENDS[1] : TUNNEL_ENDS[0]; }
+        function inTunnelWay(x, y, margin = 1) { return TUNNEL_BODY.some(bx => spaceOverlap('floor', x, y, bx, TUNNEL.y) < margin); }
+        function catsInTunnel() { return cats.filter(c => c.surface === 'tunnel'); }
+        // Anyone in it, on the way in or out, or with a route through it
+        function tunnelInUse() {
+            return cats.some(c => c.surface === 'tunnel' || (c.claim && c.claim.surface === 'tunnel') ||
+                (c.nav && (c.nav.goal.surface === 'tunnel' || c.nav.steps.some(s => s.to === 'tunnel') ||
+                           (c.nav.jump && (c.nav.jump.to === 'tunnel' || c.nav.jump.from === 'tunnel')))));
+        }
+        // Clear to run straight through: nobody else in it or on their way in
+        function tunnelRunFree(me) {
+            return tunnel.out && !tunnel.leaving && !cats.some(c => c !== me && (c.surface === 'tunnel' ||
+                (c.claim && c.claim.surface === 'tunnel') ||
+                (c.nav && (c.nav.goal.surface === 'tunnel' || c.nav.steps.some(s => s.to === 'tunnel') || (c.nav.jump && c.nav.jump.from === 'tunnel')))));
+        }
+
+        function putOutTunnel(byUser) {
+            if (tunnel.out) return false;
+            // Room for it: nobody sitting where it goes, or on their way there (and not the box)
+            for (const c of cats) {
+                const pts = c.occupiedPoints(false);
+                if (c.nav && c.nav.goal.surface === 'floor') pts.push(c.nav.goal);
+                if (pts.some(p => p.surface === 'floor' && inTunnelWay(p.x, p.y, 1.05))) return false;
+                if (!c.surface && inTunnelWay(c.x, c.y, 1.05)) return false;
+            }
+            if (box.active && box.x > 214 && box.y > 168) return false;
+            Object.assign(tunnel, { out: true, leaving: false });
+            SURFACES.tunnel = { kind: 'ledge', x1: TUNNEL_ENDS[0].innerX, x2: TUNNEL_ENDS[1].innerX, y: TUNNEL.y, label: 'the tunnel', enclosed: true };
+            TUNNEL_ENDS.forEach(e => LINKS.push({ a: 'floor', b: 'tunnel', ay: TUNNEL.y, x1: e.floorX, x2: e.floorX, off: e.innerX - e.floorX, isTunnel: true }));
+            buildNavEdges();
+            // anything lying where it goes gets nudged out of the way
+            floorTreats.forEach(t => { if (inTunnelWay(t.x, t.y)) t.y = TUNNEL.top + 2; });
+            if (yarn.x > TUNNEL.x1 - 8 && yarn.x < TUNNEL.x2 + 8 && yarn.y > TUNNEL.top + 4) yarn.y = TUNNEL.top + 4;
+            updateTunnelButton();
+            if (byUser) {
+                sound.playCrinkle(1.4);
+                tunnel.shake = 16;
+                showToast('You put the cat tunnel down. Crinkle crinkle! 🌀');
+                logDiary('You put the crinkly tunnel out', '🌀', { key: 'tunnelOut', every: 10 });
+                // somebody always has to try it out straight away
+                const keen = shuffled(cats).find(c => c.surface && !c.hunt && !c.pounce && !SLEEPY_STATES.includes(c.state) && !['proud', 'hiding', 'mischief'].includes(c.state));
+                if (keen) keen.queueTask(() => keen.goTunnel('dash'), 30 + Math.floor(Math.random() * 40), 'tunnel');
+            }
+            return true;
+        }
+
+        // Fold it away (once everyone's out)
+        function packAwayTunnel() {
+            if (!tunnel.out || tunnel.leaving) return;
+            tunnel.leaving = true;
+            cats.forEach(c => {
+                if (c.pendingTask && c.pendingTask.tag === 'tunnel') c.pendingTask = null;
+                if (c.state === 'tunnel_bat') c.settleHere('sit_relax', 90);
+                if (c.surface === 'tunnel' && !c.nav) c.stopAndDo(() => c.tunnelExit());
+            });
+            updateTunnelButton();
+        }
+
+        function removeTunnel() {
+            Object.assign(tunnel, { out: false, leaving: false });
+            delete SURFACES.tunnel;
+            for (let i = LINKS.length - 1; i >= 0; i--) if (LINKS[i].isTunnel) LINKS.splice(i, 1);
+            buildNavEdges();
+            updateTunnelButton();
+        }
+
+        function updateTunnel() {
+            if (tunnel.shake > 0) tunnel.shake--;
+            if (!tunnel.out) {
+                if (tunnel.wanted && cats.length && globalTick >= tunnel.retryAt && !putOutTunnel(false)) tunnel.retryAt = globalTick + 120;
+                return;
+            }
+            // the crinkle of somebody scampering through
+            if (globalTick >= tunnel.crinkleAt && cats.some(c => (c.surface === 'tunnel' && c.isMoving) ||
+                    (c.nav && c.nav.jump && c.nav.jump.phase === 'air' && (c.nav.jump.to === 'tunnel' || c.nav.jump.from === 'tunnel')))) {
+                sound.playCrinkle(0.7);
+                tunnel.crinkleAt = globalTick + 14 + Math.floor(Math.random() * 10);
+            }
+            if (!tunnel.leaving) return;
+            if (globalTick % 20 === 0) cats.forEach(c => { if (c.surface === 'tunnel' && !c.nav && !c.pounce && !c.hunt) c.tunnelExit(); });
+            if (!tunnelInUse()) removeTunnel();
+        }
+
+        window.triggerTunnel = function() {
+            if (!tunnel.out) {
+                tunnel.wanted = true;
+                if (!putOutTunnel(true)) showToast("Somebody's in the way of the tunnel: it'll go down in a moment 🌀");
+            } else if (tunnel.leaving) {
+                tunnel.leaving = false;                          // changed your mind
+                tunnel.wanted = true;
+                updateTunnelButton();
+                showToast('The tunnel stays! 🌀');
+            } else {
+                tunnel.wanted = false;
+                packAwayTunnel();
+                showToast(tunnelInUse() ? "Folding the tunnel away, as soon as everyone's out... 🌀" : 'Folded the tunnel away 🌀');
+            }
+        };
+
+        function updateTunnelButton() {
+            const label = document.getElementById('tunnelLabel'), btn = document.getElementById('btnTunnel');
+            const on = tunnel.out && !tunnel.leaving;
+            if (label) label.textContent = on ? 'Put Tunnel Away' : 'Cat Tunnel';
+            if (btn) btn.classList.toggle('active-btn', on);
+        }
+
+        // A click on the tunnel: a rustle, and whoever's inside reacts (or somebody comes running)
+        function pokeTunnel(c) {
+            tunnel.shake = 12;
+            sound.playCrinkle(1.2);
+            if (c && c.state === 'tunnel_lurk' && !c.nav) {          // it was waiting for exactly this
+                spawnParticle('alert', tunnelEndAt(c.x).mouthX, TUNNEL.top - 6);
+                if (c.tunnelExit()) {
+                    c.nav.label = 'Pouncing out at your hand!';
+                    c.say('Pounce!', '⚡', 120, true);
+                    showToast(`${c.name} pounces out of the tunnel at your hand! 🌀`);
+                    return;
+                }
+            }
+            if (c && c.state === 'tunnel_peek' && c.peek) { c.pet(); c.peek.down = 40; return; }   // a boop on the head
+            if (c) { c.pet(); return; }                                                         // a stroke through the fabric
+            const keen = shuffled(cats).find(o => o.surface && o.surface !== 'tunnel' && !o.hunt && !o.nav && !o.pounce &&
+                                                   !SLEEPY_STATES.includes(o.state) && !['proud', 'hiding', 'mischief'].includes(o.state));
+            if (keen && tunnelRunFree(keen)) {
+                let ok = false;
+                keen.stopAndDo(() => (ok = keen.goTunnel('dash')));
+                if (ok) { showToast(`Crinkle crinkle... ${keen.name} can't resist the tunnel! 🌀`); return; }
+            }
+            showToast('Crinkle crinkle! 🌀');
+        }
+
+        // ---- Drawing it ----
+        const TUNNEL_FABRIC = ['#28153f', '#3f2466', '#55338a', '#6b43a8', '#875fc4', '#a98ade'];   // deepest fold .. sheen
+        const TUNNEL_TRIM = ['#7a4f14', '#c4902e', '#f0c35a'];
+        const TUNNEL_MID = TUNNEL.top + (TUNNEL.y - TUNNEL.top) / 2;
+        function drawTunnel() {
+            if (!tunnel.out) return;
+            spriteFX(ctx, TUNNEL.peepX, 222, () => {
+                const T = TUNNEL, t = globalTick, inside = catsInTunnel();
+                const jig = tunnel.shake > 0;                                              // a ripple along the fabric
+                // the fabric pushed up by whoever's inside (wobbling as they scamper along)
+                const lift = x => {
+                    let h = 0;
+                    for (const c of inside) {
+                        if (c.state === 'hiding' && !c.nav) continue;                         // lying low
+                        const k = 1 - Math.abs(x - c.x) / (c.small ? 6 : 8);
+                        if (k <= 0) continue;
+                        const amp = c.isMoving ? 2 + Math.floor((t + c.id * 3) / 4) % 2
+                                  : SLEEPY_STATES.includes(c.state) ? 1 + Math.floor(c.animTick / 28) % 2 : 1.4;
+                        h = Math.max(h, amp * Math.sqrt(k));
+                    }
+                    return Math.round(h + (jig ? 0.5 + 0.5 * Math.sin(x * 0.55 - t * 0.9) : 0));
+                };
+                ctx.fillStyle = 'rgba(15, 10, 6, 0.38)';                                       // its shadow on the floor
+                ctx.fillRect(T.x1 - 4, T.y + 1, T.x2 - T.x1 + 9, 2);
+                // the tube, column by column: lit along the top, a wire hoop every five pixels
+                let peepTop = T.top;
+                for (let x = T.x1; x <= T.x2; x++) {
+                    const top = T.top - lift(x), hoop = (x - T.x1) % 5, span = T.y - top + 1;
+                    if (x === T.peepX) peepTop = top;
+                    let runK = -1, runY = top;
+                    for (let y = top; y <= T.y + 1; y++) {
+                        let k = -2;
+                        if (y <= T.y) {
+                            const v = (y - top) / span;
+                            k = v < 0.12 ? 5 : v < 0.34 ? 4 : v < 0.6 ? 3 : v < 0.84 ? 2 : 1;
+                            if (hoop === 0) k = Math.max(0, k - 1);
+                            else if (hoop === 1 && k < 5) k++;
+                        }
+                        if (k !== runK) {
+                            if (runK >= 0) pxRect(ctx, x, runY, 1, y - runY, TUNNEL_FABRIC[runK]);
+                            runK = k; runY = y;
+                        }
+                    }
+                }
+                // the peephole on top
+                const px = T.peepX;
+                pxRect(ctx, px - 3, peepTop, 7, 1, TUNNEL_TRIM[1]);
+                pxRect(ctx, px - 2, peepTop, 5, 1, '#120a1c');
+                pxRect(ctx, px - 2, peepTop + 1, 5, 1, TUNNEL_TRIM[2]);
+                // the two openings: a hoop of trim round each (lit at the top, shaded underneath), the dark
+                // inside, and a glimmer of daylight from the far end
+                TUNNEL_ENDS.forEach(e => {
+                    for (let y = T.top; y <= T.y; y++) {
+                        const dy = (y - TUNNEL_MID) / 6.7, w = Math.sqrt(Math.max(0, 1 - dy * dy)) * 4.6;
+                        const a = Math.round(e.mouthX - w), b = Math.round(e.mouthX + w);
+                        const trim = dy < -0.45 ? TUNNEL_TRIM[2] : dy < 0.5 ? TUNNEL_TRIM[1] : TUNNEL_TRIM[0];
+                        pxRect(ctx, a, y, b - a + 1, 1, trim);
+                        if (b - a >= 3) {
+                            const v = (y - T.top) / (T.y - T.top);
+                            pxRect(ctx, a + 1, y, b - a - 1, 1, v < 0.25 ? '#0b0712' : v < 0.6 ? '#140c1f' : '#1e122c');
+                            if (v > 0.3 && v < 0.75) pxRect(ctx, e.mouthX - e.side, y, 1, 1, '#33224d');   // light from the far end
+                        }
+                        pxRect(ctx, e.side < 0 ? a : b, y, 1, 1, y < TUNNEL_MID ? TUNNEL_TRIM[2] : TUNNEL_TRIM[1]);   // the outer lip
+                    }
+                });
+                // a pom-pom dangling from the top, near the left-hand opening
+                const sway = Math.round(Math.sin(t * 0.05 + (tunnel.shake ? t * 0.6 : 0)) * 1.2);
+                const top0 = T.top - lift(T.x1 + 7);
+                pxRect(ctx, T.x1 + 7, top0 + 1, 1, 3, '#e5e7eb');
+                pxRect(ctx, T.x1 + 6 + sway, top0 + 4, 3, 3, '#f472b6');
+                pxRect(ctx, T.x1 + 6 + sway, top0 + 4, 1, 1, '#ffd1e8');
+                pxRect(ctx, T.x1 + 8 + sway, top0 + 6, 1, 1, '#be3f86');
+                // whoever's inside: eyes gleaming at an opening, a tail sticking out, or a head up through the top
+                inside.forEach(c => {
+                    if (c.state === 'tunnel_peek' && !c.nav && c.peek) { drawTunnelPeeker(c, peepTop); return; }
+                    const e = tunnelEndAt(c.x);
+                    if (Math.abs(c.x - e.innerX) > 4 || (c.nav && c.isMoving)) return;
+                    if (c.facing === e.side) {
+                        if (c.state === 'hiding' && !c.isPeeking()) return;
+                        drawTunnelEyes(c, e.mouthX, TUNNEL_MID - 2);
+                        if (c.state === 'tunnel_lurk') { pxRect(ctx, e.mouthX - 3, T.y - 1, 2, 1, c.pal.paws); pxRect(ctx, e.mouthX + 1, T.y - 1, 2, 1, c.pal.paws); }
+                    } else if (c.state !== 'hiding') {
+                        // nose in, tail out (twitching now and then, even in its sleep)
+                        const s = e.side, x0 = e.mouthX + s * 3, kit = c.small ? 2 : 0;
+                        const flick = SLEEPY_STATES.includes(c.state) ? (Math.floor(c.animTick / 50) % 4 === 0 ? 1 : 0) : Math.round(Math.sin(c.animTick * 0.12) + 0.3);
+                        pxRect(ctx, s > 0 ? x0 : x0 - 6 + kit, T.y - 2, 7 - kit, 2, c.pal.dark);
+                        pxRect(ctx, s > 0 ? x0 + 6 - kit : x0 - 7 + kit, T.y - 4 - flick, 2, 3, c.pal.base);
+                    }
+                });
+            });
+        }
+        // Two eyes in the dark of an opening, glancing about (and blinking)
+        function drawTunnelEyes(c, x, y) {
+            if ((c.animTick % 80) < 4) {
+                pxRect(ctx, x - 3, y + 1, 2, 1, c.pal.eyes);
+                pxRect(ctx, x + 1, y + 1, 2, 1, c.pal.eyes);
+                return;
+            }
+            const look = clamp(c.houseLook || 0, -1, 1) > 0 ? 1 : 0;
+            pxRect(ctx, x - 3, y, 2, 2, c.pal.eyes);
+            pxRect(ctx, x + 1, y, 2, 2, c.pal.eyes);
+            pxRect(ctx, x - 3 + look, y, 1, 2, '#0b0705');
+            pxRect(ctx, x + 1 + look, y, 1, 2, '#0b0705');
+        }
+        // A head popped up through the peephole, paws hooked over the rim (or just ear tips, ducking)
+        function drawTunnelPeeker(c, top) {
+            const p = c.peek;
+            const up = p.up;
+            if (up <= 0.05) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(TUNNEL.peepX - 12, top - 30, 24, 31);       // only what's above the hole shows
+            ctx.clip();
+            ctx.translate(TUNNEL.peepX, top + 1);
+            const g = c.small ? smallCtx.wrap(ctx, c.small) : ctx;
+            const hy = -Math.round(9 * up);
+            drawFaceHead(g, c, 0, hy);
+            drawFaceEyes(g, c, 0, hy, (c.animTick % 90) < 4 || c.purrTimer > 0 || p.down > 0, c.houseLook || 0);
+            if (up > 0.9) { pxRect(g, -6, -1, 3, 2, c.pal.paws); pxRect(g, 3, -1, 3, 2, c.pal.paws); }
             ctx.restore();
         }
 
@@ -8377,6 +9047,7 @@
             const F = SURFACES.floor;
             if (floorTreats.length >= 3) { showToast("That's plenty of treats on the floor!"); return; }
             const t = { x: clamp(x, F.x1 + 8, F.x2 - 8), y: clamp(y, F.y1 + 1, F.y2), by: null };
+            if (tunnel.out && inTunnelWay(t.x, t.y)) t.y = TUNNEL.top + 2;     // lands just behind the tunnel
             floorTreats.push(t);
             sound.playPop();
             spawnParticle('sparkle', t.x, t.y - 3);
@@ -10190,6 +10861,12 @@
                 yarn.vx = side * Math.abs(yarn.vx) * 0.7;
             }
 
+            // Bounce off the tunnel
+            if (tunnel.out && yarn.x > TUNNEL.x1 - 8 && yarn.x < TUNNEL.x2 + 8 && yarn.y > TUNNEL.top + 4) {
+                yarn.y = TUNNEL.top + 4;
+                yarn.vy = -Math.abs(yarn.vy) * 0.6;
+            }
+
             // Keep yarn within floor bounds
             if (yarn.x < 68) { yarn.x = 68; yarn.vx = Math.abs(yarn.vx) * 0.8; }
             if (yarn.x > 285) { yarn.x = 285; yarn.vx = -Math.abs(yarn.vx) * 0.8; }
@@ -10613,6 +11290,17 @@
                 return;
             }
 
+            // 1. A cat in the tunnel (lurking, peeping out of the top, napping)
+            if (tunnel.out) {
+                const peeper = catsInTunnel().find(c => c.state === 'tunnel_peek' && c.peek && c.peek.up > 0.5 && !c.nav);
+                if (peeper && Math.abs(mx - TUNNEL.peepX) < 8 + sl && my > TUNNEL.top - 14 - sl && my < TUNNEL.top + 3 + sl) { pokeTunnel(peeper); return; }
+                if (mx >= TUNNEL.x1 - 6 - sl && mx <= TUNNEL.x2 + 6 + sl && my >= TUNNEL.top - 3 - sl && my <= TUNNEL.y + 3 + sl && (!hit || hit.surface === 'tunnel')) {
+                    const inside = catsInTunnel().filter(c => !c.nav).sort((a, b) => Math.abs(a.x - mx) - Math.abs(b.x - mx))[0];
+                    pokeTunnel(inside && Math.abs(inside.x - mx) < 14 ? inside : null);
+                    return;
+                }
+            }
+
             // 1. Check if user clicked on any of the 3 cats
             if (hit) {
                 hit.pet();
@@ -10934,6 +11622,7 @@
             updateMouseVisits();
             updateKnockables();
             updateBox();
+            updateTunnel();
             updateBird();
             updateSquirrel();
             updateStray();
@@ -10958,6 +11647,7 @@
             drawables.push({ y: yarn.y, draw: drawYarnBall });
             if (mouse.active && mouse.phase !== 'caught') drawables.push({ y: mouse.y, draw: () => spriteFX(ctx, mouse.x, mouse.y, g => drawMouse(g)) });
             if (box.active) drawables.push({ y: box.y - 0.01, draw: () => spriteFX(ctx, box.x, box.y, drawBox) });
+            if (tunnel.out) drawables.push({ y: TUNNEL.y + 0.9, draw: drawTunnel });
             if (catnip.active) drawables.push({ y: catnip.y - 6, draw: drawCatnip });
             floorTreats.forEach(t => drawables.push({ y: t.y - 0.5, draw: () => spriteFX(ctx, t.x, t.y, () => drawTreat(t)) }));
             KNOCKABLES.forEach(k => { if (!knockableUp(k) && knockablePresent(k)) drawables.push({ y: k.fallTo, draw: () => spriteFX(ctx, k.x, k.y, () => drawKnockable(k)) }); });
@@ -11093,7 +11783,7 @@
                     feeder: feederSeed,
                     mouseStats,
                     knock: KNOCKABLES.map(k => ({ id: k.id, fallen: !knockableUp(k), x: k.x, dir: k.dir })),
-                    settings: { weather: currentWeatherIdx, season: currentSeasonIdx, fire: fireplaceLit, lamp: lampLit,
+                    settings: { weather: currentWeatherIdx, season: currentSeasonIdx, fire: fireplaceLit, lamp: lampLit, tunnel: tunnel.wanted,
                                 sound: pendingAudio ? pendingAudio.sound : sound.enabled, music: pendingAudio ? pendingAudio.music : music.playing },
                     diary: diaryEntries.slice(-150),
                     diaryLast,
@@ -11134,6 +11824,7 @@
                 if (st.weather >= 0 && st.weather < WEATHER_MODES.length) currentWeatherIdx = st.weather;
                 if (st.season >= 0 && st.season < SEASON_MODES.length) currentSeasonIdx = st.season;
                 if (typeof st.fire === 'boolean') fireplaceLit = st.fire;
+                tunnel.wanted = st.tunnel !== false;
                 updateOutside(true);
                 lastPhase = outside.phase;
                 // The lamp follows the time of day in real-time mode; otherwise as you left it
@@ -11397,6 +12088,7 @@
             updateWeatherButton();
             updateSeasonButton();
             updateFireBtnLabel();
+            updateTunnelButton();
             updateToolUI();
             const tag = document.getElementById('tagline');
             if (tag) tag.textContent = tapify(tag.textContent);

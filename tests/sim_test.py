@@ -38,6 +38,7 @@ RUN = r"""
   const lastState = cats.map(c => c.state + '|' + !!c.nav);
   const trig = { snacks: triggerSnacks, yarn: triggerTossYarn, cuddle: triggerCuddlePile, window: triggerWindowWatch };
   if (window.__extraTriggers && typeof triggerBox === 'function') Object.assign(trig, { box: triggerBox, feeder: triggerFeeder, tidy: triggerTidyUp });
+  if (window.__extraTriggers && typeof triggerTunnel === 'function') Object.assign(trig, { tunnel: triggerTunnel, poke: () => pokeTunnel(null) });
   if (window.__extraTriggers && typeof triggerCatnip === 'function') Object.assign(trig, {
     catnip: triggerCatnip,
     toss: () => tossTreat(80 + Math.random() * 200, 150 + Math.random() * 30),
@@ -46,6 +47,7 @@ RUN = r"""
     bag: () => { setTool('treat'); setTool('pet'); }
   });
   st.boxOverlap = 0; st.boxInfo = null; st.boxes = 0; st.knocks = 0; st.birds = 0;
+  st.tunnelOverlap = 0; st.tunnelInfo = null; st.tunnelTrips = 0; st.tunnelStates = {};
   let boxWas = false, birdWas = false; const knockWas = {};
   const trigNames = Object.keys(trig);
   for (let f = 0; f < frames; f++) {
@@ -101,6 +103,14 @@ RUN = r"""
         }
       });
     }
+    // Nobody standing in the tunnel's way on the floor; count the trips through it and what they did in there
+    if (typeof tunnel !== 'undefined' && tunnel.out) cats.forEach(c => {
+      if (c.surface === 'floor' && TUNNEL_BODY.some(bx => spaceOverlap('floor', c.x, c.y, bx, TUNNEL.y) < 1 - 1e-6)) {
+        st.tunnelOverlap++;
+        if (!st.tunnelInfo) st.tunnelInfo = { f, cat: c.name, x: c.x, y: c.y, state: c.state, nav: !!c.nav };
+      }
+      if (c.surface === 'tunnel' && !c.nav) st.tunnelStates[c.state] = (st.tunnelStates[c.state] || 0) + 1;
+    });
     for (let i = 0; i < cats.length; i++) for (let j = i + 1; j < cats.length; j++) {
       const a = cats[i], b = cats[j];
       if (!a.surface || a.surface !== b.surface) continue;
@@ -115,6 +125,7 @@ RUN = r"""
       }
     }
   }
+  st.tunnelTrips = st.jumps['tunnel>floor'] || 0;
   st.final = cats.map(c => ({ name: c.name, s: c.surface, x: +c.x.toFixed(1), y: +c.y.toFixed(1), state: c.state }));
   return st;
 }

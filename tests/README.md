@@ -18,7 +18,7 @@ GAME=$PWD/index.html
 
 ## The main simulation
 
-`sim_test.py <html> <frames> <trigger_every> <seed> [<seed>...]` fast-forwards the game (60 frames = 1 second) and checks every frame that no two cats overlap, nobody stands off their surface, every jump follows the navigation graph, and nothing teleports. With `EXTRA=1` it also fires random room events (box, feeder, catnip, treats, brushing, yarn and so on) every `trigger_every` frames.
+`sim_test.py <html> <frames> <trigger_every> <seed> [<seed>...]` fast-forwards the game (60 frames = 1 second) and checks every frame that no two cats overlap, nobody stands off their surface, every jump follows the navigation graph, and nothing teleports. It also checks nobody on the floor stands in the tunnel's way, and counts trips through the tunnel and what the cats got up to inside it. With `EXTRA=1` it also fires random room events (box, tunnel, feeder, catnip, treats, brushing, yarn and so on) every `trigger_every` frames.
 
 ```sh
 EXTRA=1 python3 tests/sim_test.py $GAME 36000 300 1 2 > run.txt
