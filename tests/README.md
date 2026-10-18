@@ -39,6 +39,7 @@ Options, as environment variables:
 | `dither.py <html> <frames> <seed> [time] [setup]` | Cats flickering or shuffling on the spot (zoomies laps can show up as harmless "stuck" events) |
 | `trace_stuck.py <html> <seed> <time> <frame> <cat> <n>` | Prints one cat's position and plan frame by frame, to investigate a dither event |
 | `stray_batch.py <html> <first seed> <last seed>` | Lets the stray kitten in at different moments; reports any cat stuck on the windowsill |
+| `tunnel_corner.py <html>` | A cat in the corner beside the right-hand end of the tunnel gets out within a second or two, with the zoomies and walking across the room (it used to try going round the front of the tunnel and shuffle on the spot there) |
 | `overlap_sep.py <html>` | Two cats squashed together on a ledge can walk apart |
 | `household_persist.py <html>` | Old saves still load; a stray can join a custom household; Start over brings back the creator |
 | `creator_flow.py <html>` | Designing two cats in the creator, then saving and reloading |

@@ -3208,7 +3208,12 @@
                 const ux = dx / d, uy = dy / d;
                 const tryMove = (vx, vy) => {
                     const nx = clamp(this.x + vx * speed, F.x1, F.x2), ny = clamp(this.y + vy * speed, F.y1, F.y2);
-                    if (Math.hypot(nx - this.x, ny - this.y) < speed * 0.3) return null;   // pinned against an edge
+                    const m = Math.hypot(nx - this.x, ny - this.y);
+                    if (m < speed * 0.3) return null;                                    // pinned against an edge
+                    // ...or the edge of the room would turn it well away from the way it meant to go
+                    // (sliding 'round the front' of the tunnel, which touches the front edge, just
+                    // scrapes along the edge: that left cats shuffling in the corner beside it)
+                    if (((nx - this.x) * vx + (ny - this.y) * vy) / m < 0.5) return null;
                     if (this.moveBlocked('floor', nx, ny, obstacles)) return null;
                     return [nx, ny];
                 };
@@ -5255,11 +5260,12 @@
                     let p, tries = 0;
                     do {
                         p = { x: F.x1 + 6 + Math.random() * (F.x2 - F.x1 - 12), y: F.y1 + 2 + Math.random() * (F.y2 - F.y1 - 4) };
-                    } while (Math.hypot(p.x - px, p.y - py) < 70 && ++tries < 10);
+                    } while ((Math.hypot(p.x - px, p.y - py) < 70 || (tunnel.out && inTunnelWay(p.x, p.y, 1.1))) && ++tries < 10);
+                    if (tunnel.out && inTunnelWay(p.x, p.y, 1.1)) p.y = TUNNEL.top - 2;      // never a spot under the tunnel
                     pts.push(p);
                     px = p.x; py = p.y;
                 }
-                this.zoom = { pts, blocked: 0, best: Infinity, stall: 0, t: 0 };
+                this.zoom = { pts, blocked: 0, best: Infinity, stall: 0, t: 0, mark: Infinity, markT: 0 };
                 this.state = 'zoomies';
                 if (!reason) logDiary(`${this.name} had a mad half-minute of zoomies`, '⚡', { key: 'zoom' + this.id, every: 15 });
                 this.claim = null;
@@ -5284,15 +5290,22 @@
                     return;
                 }
                 const p = z.pts[0];
-                const res = this.stepFloorToward(p.x, p.y, RUN_SPEED * 1.15 * this.speedMult);
-                // Not getting any closer (another cat or the box in the way)? Pick another spot.
+                // (round behind the tunnel, if it's in the way)
+                const res = this.stepFloorRound(p.x, p.y, RUN_SPEED * 1.15 * this.speedMult);
+                // Not getting any closer (another cat or the box in the way), or only creeping closer
+                // bit by bit? Pick another spot.
                 const dist = Math.hypot(p.x - this.x, p.y - this.y);
                 if (dist < z.best - 0.5) { z.best = dist; z.stall = 0; } else z.stall++;
+                if (z.t - z.markT >= 45) {
+                    if (dist > z.mark - 6) z.stall = 99;
+                    z.mark = dist; z.markT = z.t;
+                }
                 if (res === 'arrived' || z.stall > 30 || (res === 'blocked' && ++z.blocked > 25)) {
                     z.pts.shift();
                     z.blocked = 0;
                     z.best = Infinity;
                     z.stall = 0;
+                    z.mark = Infinity; z.markT = z.t;
                 }
                 if (++z.t > 900) z.pts.length = 0;          // that's quite enough zooming
                 if (this.isMoving && this.animTick % 4 === 0) spawnParticle('dust', this.x - this.facing * 7, this.y - 1);
