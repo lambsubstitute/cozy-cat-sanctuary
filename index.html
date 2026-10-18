@@ -5923,6 +5923,35 @@
             'BBBBBWWWWWWWBBBB',
             '.BBBBWWWWWWWBBB.'
         ];
+        // The loaf, side on: rows y -8 to -1, from x -9. A rounded loaf of a back, the front tucked
+        // square under the chest with a pale bib, paws hidden underneath. The head sits at (2, -12)
+        // (kneading lifts it to (2, -13) and puts the front legs out in front).
+        const LOAF_BODY = [
+            '...BSSBSSBB....',
+            '.BBBSSBSSBSBB..',
+            'BBBBSSBSSBSBBW.',
+            'BBBBSSBSSBBBWWW',
+            'BBBBBBBBBBBBWWW',
+            'BBBBBBBBBBBBWWW',
+            'BBBBBBBBBBBBWWW',
+            '.BBBBBBBBBBBBB.'
+        ];
+        // The big stretch (a play bow), side on: rows y -11 to -2, from x -9. Haunches high at the
+        // back over a straight hind leg, the back sloping down to the chest held low, the pale belly
+        // underneath. The front legs lie along the floor, paws out past the nose, and the head goes
+        // low at (1, -9).
+        const STRETCH_BODY = [
+            '.BSSBB.......',
+            'BBSSBBB......',
+            'BBSSBBSS.....',
+            'BBBBBSSBB....',
+            'BBBBBSSBBSS..',
+            '.BBBBBBBSSBBB',
+            '.BBBWWBBBBBBB',
+            '..BB..WWBBBBB',
+            '..BB....WWWW.',
+            '..BB.........'
+        ];
 
         function drawCatBody(c, cat) {
             c.save();
@@ -6069,66 +6098,25 @@
                 if (inhale) breathHD(c, cat, -5.5, -5, 11, [], pal.belly);
 
             } else if (pose === 'sleep_loaf') {
-                // Classic Loaf Pose
-                pxRect(c, -8, -7 + breathe, 15, 7, pal.base);
-                pxRect(c, -7, -8 + breathe, 13, 2, pal.base);
-                // White chest bib for tuxedo or soft chest for others
-                pxRect(c, 4, -5 + breathe, 4, 4, pal.belly);
-                // Stripes on back
-                if (!cat.isTuxedo) {
-                    pxRect(c, -5, -8 + breathe, 2, 5, pal.stripe);
-                    pxRect(c, -2, -8 + breathe, 2, 5, pal.stripe);
-                    pxRect(c, 1, -8 + breathe, 2, 4, pal.stripe);
-                }
-                // Loaf Head
-                pxRect(c, 3, -12 + breathe, 7, 6, pal.base);
-                if (cat.isTuxedo) {
-                    pxRect(c, 6, -9 + breathe, 4, 3, pal.belly); // White muzzle
-                } else {
-                    pxRect(c, 6, -12 + breathe, 2, 2, pal.stripe); // Forehead M stripe
-                }
-                // Ears
-                const lt = cat.dreamTwitch();
-                pxRect(c, 3, -14 + breathe, 2, 2, pal.dark);
-                pxRect(c, 8, -14 + breathe - (lt && !cat.dream.chase ? 1 : 0), 2, 2, pal.dark);
-                pxRect(c, 4, -13 + breathe, 1, 1, pal.light);
-                // Sleeping eye & pink nose
-                pxRect(c, 6, -9 + breathe, 2, 1, '#1e140f');
-                pxRect(c, 9, -9 + breathe, 1, 1, pal.nose);
-                closedEyeHD(c, cat, 6, -9 + breathe); noseHD(c, cat, 9, -9 + breathe);
-                earHD(c, cat, 3, -14 + breathe); earHD(c, cat, 8, -14 + breathe - (lt && !cat.dream.chase ? 1 : 0));
+                // The loaf: paws tucked away, a rounded back (LOAF_BODY) that swells on each breath in,
+                // eyes shut; an ear pricks up in a dream
+                const cols = catCols(cat), lt = cat.dreamTwitch();
+                catMap(c, -9, -8, LOAF_BODY, cols);
+                if (inhale) catMapSwell(c, -9, -8, LOAF_BODY, cols, 'top', -8, 1);
+                catHeadSide(c, cat, 2, -12, { eye: 'closed', earUp: lt && !cat.dream.chase ? 1 : 0 });
                 // Hint of front paws tucked under chest (kneading away in a dream)
                 pxRect(c, 5 + lt, -1, 3, 1, pal.paws);
                 // the tail, tucked neatly along its side
                 catTail(c, cat, -7.6, -1.2, -0.04, 10, 0, 0, 1.6, 1.3);
-                if (inhale) breathHD(c, cat, -6.5, -8, 9, cat.pattern === 'tabby' ? [-5, -2, 1] : []);
 
             } else if (pose === 'kneading') {
                 // Making biscuits: settled low, eyes shut in bliss, front paws pressing in turn
-                const k = Math.floor(t / 7) % 2;
-                pxRect(c, -8, -7, 14, 7, pal.base);
-                pxRect(c, -7, -8, 12, 2, pal.base);
-                pxRect(c, 3, -5, 4, 4, pal.belly);
-                if (!cat.isTuxedo) {
-                    pxRect(c, -5, -8, 2, 5, pal.stripe);
-                    pxRect(c, -2, -8, 2, 5, pal.stripe);
-                }
+                catMap(c, -9, -8, LOAF_BODY, catCols(cat));
                 // the two front paws pressing in turn, rising and falling smoothly
-                const kp = t * 0.45 + k * 0;
+                const kp = t * 0.45;
                 catLeg(c, cat, 5, -3.4, 5, -Math.max(0, Math.sin(kp)) * 1.1, pal.base, 1.7);
                 catLeg(c, cat, 8, -3.4, 8, -Math.max(0, -Math.sin(kp)) * 1.1, pal.base, 1.7);
-                pxRect(c, 3, -13, 7, 6, pal.base);
-                if (cat.isTuxedo) {
-                    pxRect(c, 6, -10, 4, 3, pal.belly);
-                } else {
-                    pxRect(c, 6, -13, 2, 2, pal.stripe);
-                }
-                pxRect(c, 3, -15, 2, 2, pal.dark);
-                pxRect(c, 8, -15, 2, 2, pal.dark);
-                pxRect(c, 4, -14, 1, 1, pal.light);
-                pxRect(c, 6, -10, 2, 1, '#1e140f'); // blissful closed eyes
-                pxRect(c, 9, -10, 1, 1, pal.nose);
-                closedEyeHD(c, cat, 6, -10); noseHD(c, cat, 9, -10); earHD(c, cat, 3, -15); earHD(c, cat, 8, -15);
+                catHeadSide(c, cat, 2, -13, { eye: 'closed' });              // blissful closed eyes
                 catTail(c, cat, -7.6, -2.7, Math.PI, 6, -0.02, 0.15 * Math.sin(t * 0.06));
 
             } else if (pose === 'scratching' || pose === 'reach' || pose === 'toy_swat') {
@@ -6196,30 +6184,14 @@
                 catTail(c, cat, 0.2, -1.6, Math.PI / 2 - swish * 0.65, 5.5, swish * 0.12, swish * 0.25);
 
             } else if (pose === 'stretching') {
-                // Big arch / bow stretch pose!
-                // Back hindquarters high
-                pxRect(c, -8, -10, 6, 6, pal.base);
-                pxRect(c, -7, -4, 2, 4, pal.base);
+                // The big stretch, a play bow: haunches high, the back sloping down to the chest held
+                // low (STRETCH_BODY), front legs out along the floor, head low, tail straight up
+                catMap(c, -9, -11, STRETCH_BODY, catCols(cat));
                 pxRect(c, -7, -1, 2, 2, pal.paws);
-                // Sloping body down to front paws
-                pxRect(c, -3, -7, 6, 5, pal.base);
-                pxRect(c, -2, -3, 5, 2, pal.belly);
-                if (!cat.isTuxedo) {
-                    pxRect(c, -5, -10, 2, 4, pal.stripe);
-                    pxRect(c, -1, -7, 2, 4, pal.stripe);
-                }
-                // Front legs stretched way out forward
-                pxRect(c, 3, -3, 6, 2, pal.base);
-                pxRect(c, 7, -3, 3, 2, pal.paws);
-                // Head low
-                pxRect(c, 2, -8, 6, 5, pal.base);
-                pxRect(c, 3, -10, 2, 2, pal.dark);
-                pxRect(c, 6, -10, 2, 2, pal.dark);
-                pxRect(c, 5, -6, 2, 1, '#1e140f');
-                pxRect(c, 7, -6, 1, 1, pal.nose);
-                closedEyeHD(c, cat, 5, -6); noseHD(c, cat, 7, -6); earHD(c, cat, 3, -10); earHD(c, cat, 6, -10);
-                // Tail straight up!
-                catTail(c, cat, -8, -9.2, -Math.PI / 2 - 0.12, 6.5, 0.04, 0.2);
+                pxRect(c, 2, -3, 8, 2, pal.base);                         // front legs, reaching out past the nose
+                pxRect(c, 9, -3, 3, 2, pal.paws);
+                catHeadSide(c, cat, 1, -9, { eye: 'closed' });
+                catTail(c, cat, -8.3, -10.6, -Math.PI / 2 - 0.12, 6.5, 0.04, 0.2);
 
             } else if (cat.isMoving && cat.lastStep >= 1.15) {
                 // Full gallop: the body bunches up and stretches out in turn while the legs reach
