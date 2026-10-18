@@ -69,6 +69,9 @@ Inside a sprite, draw with the right tool for each job:
 | `hd(c, x, y, w, h, col)` / `hdClear(...)` | Fine details at half-pixel steps (eyes, noses, whiskers, ear tips, toes) or notches cut out of the shape. Never use them for the basic shape. |
 | `fineMap(c, x, y, rows, pal)`, `fineTri(...)` | Small fine-pixel bitmaps and triangles. |
 | `fineDabs(c, [[x, y, r, col]...])` with `roundShader(col, r, nx, ny)` | Smooth, curved, moving parts: anything that bends or moves half a pixel at a time. |
+| `catMap(c, x, y, rows, catCols(cat))` | A body as a shaped bitmap, one letter per room pixel: `B` coat, `S` tabby markings, `W` pale chest and belly, `M` muzzle (white on a tuxedo), `D` ears. This is how the rounded silhouettes are drawn (`SIT_BODY`, `STAND_BODY`, `CURL_BODY`, and the window-watching cat). Prefer it to stacking `pxRect` boxes. |
+| `catHeadSide(c, cat, hx, hy, { eye, whiskers, flick, earUp })` | The side-on head (`HEAD_SIDE`): sloping forehead, muzzle, chin, ears, eye and nose, all placed for you. Use it for any side-on pose. |
+| `catMapSwell(c, x, y, rows, cols, 'top' or 'back', from, to)` | Breathing for a `catMap` body: its outline swells half a pixel on a breath in. |
 | `catTail`, `catLeg`, `catShadow`, `eyeHD`, `closedEyeHD`, `noseHD`, `earHD`, `pawHD`, `breathHD` | Cat parts. Reuse them rather than drawing new ones. |
 
 Never call canvas paths (`arc`, `lineTo`, `drawImage`...) in cat drawing code: kittens are drawn through `smallCtx`, which only supports `save`, `restore`, `translate`, `scale`, `fillStyle`, `globalAlpha`, `beginPath`, `rect`, `clip` and `fillRect` (and the helpers above, which know about it).
@@ -77,7 +80,7 @@ Never call canvas paths (`arc`, `lineTo`, `drawImage`...) in cat drawing code: k
 
 - **Coordinates**: `(0, 0)` is on the ground under the middle of the cat; it faces **right** (+x is forward) and up is **-y**. `drawCatBody` flips it with `c.scale(-1, 1)` when it faces left, so draw every pose facing right. A standing adult's body is about `x -7..6`, head `x 2..9`, ears up to `y -14`.
 - **Only ever use the palette**: `cat.pal.base`, `dark`, `stripe`, `light`, `belly`, `paws`, `nose`, `eyes` (built by `lookPalette`). Shade them with `shade` or mix them with `blendColors` / `mixHex`; never hard-code a coat colour. The only fixed colours are the small face details: `LID`, `PUPIL`, `WHISKER`, the white glint, the near-black `'#1e140f'` and the soft dark mouth line.
-- **Coat areas must be exactly `pal.base` and markings exactly `pal.stripe`** in `pxRect`. `coatPattern` works by finding those two colours and turning them into solid, calico or tortoiseshell markings; anything shaded, mixed or drawn with `hd` is left alone.
+- **Coat areas must be exactly `pal.base` and markings exactly `pal.stripe`** in `pxRect` (in a `catMap`, the letters `B` and `S`). `coatPattern` works by finding those two colours and turning them into solid, calico or tortoiseshell markings; anything shaded, mixed or drawn with `hd` is left alone.
 - **Tuxedo**: check `cat.isTuxedo` and draw a white blaze or bib in `pal.belly` instead of stripes, the way every existing pose does. Colourpoint works through the palette (and `catTail`).
 - **Kittens** are the same sprites at `KITTEN_SIZE` (0.75). Check every new pose on a kitten.
 
@@ -88,13 +91,13 @@ Any noise, hash or pattern on something that moves must be worked out from the *
 ### Animation
 
 - Drive animation from `cat.animTick` (each cat's own clock), offset by `cat.id` so cats never move in step.
-- Move parts half a pixel at a time (`hd`, `fineDabs`, `dx`/`dy`) rather than jumping whole room pixels. Breathing is the back rising half a pixel (`breathHD`), not the cat hopping.
+- Move parts half a pixel at a time (`hd`, `fineDabs`, `dx`/`dy`) rather than jumping whole room pixels. Breathing is the back rising half a pixel (`breathHD`, or `catMapSwell` for a `catMap` body), not the cat hopping.
 - Walking uses `catGait(cat)` (stride phase and body bob); legs step in order back left, front left, back right, front right, and each paw lifts as it swings forward.
 - Existing rhythms: blink every 80 ticks, ear flick (`earFlick`), tail sway from `Math.sin(t * 0.15)`. Match their pace; small and slow reads as cosy.
 
 ### Adding a pose
 
-1. A branch in `drawCatBody` (copy the nearest existing pose and change it).
+1. A branch in `drawCatBody` (copy the nearest existing pose and change it). Draw the body as a `catMap` bitmap with a rounded silhouette and the head with `catHeadSide`, like sitting, standing and curled up. (Some older poses, such as the loaf, kneading and stretching, are still built from boxes.)
 2. A route to it in `getPose()` (the state or activity that shows it).
 3. Its height in `bubbleAnchor()` if it isn't about 18 room pixels tall.
 4. Add it to `POSES` in `tests/pose_sheet.py`, and to `PREVIEW_POSES` if it suits the cat creator's preview.

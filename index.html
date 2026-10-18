@@ -5823,6 +5823,106 @@
                 }
             });
         }
+        // The colours a cat bitmap's letters stand for: B its coat, S its tabby markings (turned into
+        // the right markings by coatPattern), W its pale chest and belly, M its muzzle (white on a
+        // tuxedo), D its ears. They must stay exactly the palette colours, for coatPattern to find them.
+        function catCols(cat) {
+            const pal = cat.pal, tux = cat.isTuxedo;
+            return { B: pal.base, S: tux ? pal.base : pal.stripe, W: pal.belly, M: tux ? pal.belly : pal.base, D: pal.dark };
+        }
+        // A breath in: the outline of a cat bitmap swells half a pixel, along its 'top' (above the first
+        // painted cell of each column from x0..x1) or its 'back' (behind the first painted cell of each
+        // row from y0..y1), in the colour of the cell it grows from
+        function catMapSwell(c, x0, y0, rows, cols, side, from, to) {
+            if (side === 'top') {
+                const w = Math.max(...rows.map(r => r.length));
+                for (let i = 0; i < w; i++) {
+                    const x = x0 + i;
+                    if (x < from || x > to) continue;
+                    const j = rows.findIndex(r => cols[r[i]]);
+                    if (j >= 0) hd(c, x, y0 + j - 0.5, 1, 0.5, cols[rows[j][i]]);
+                }
+            } else {
+                rows.forEach((r, j) => {
+                    const y = y0 + j;
+                    if (y < from || y > to) return;
+                    const i = [...r].findIndex(ch => cols[ch]);
+                    if (i >= 0) hd(c, x0 + i - 0.5, y, 0.5, 1, cols[r[i]]);
+                });
+            }
+        }
+
+        // A cat's head side on, facing right, in the box (hx, hy) to (hx + 8, hy + 6): a rounded
+        // skull, the forehead sloping down to a short muzzle, a soft chin, tabby lines on the brow,
+        // and the two ears on top (the near one a little way back from the front). Eye at
+        // (hx + 3, hy + 2), nose at (hx + 7, hy + 3).
+        const HEAD_SIDE = [
+            'BBSSBB..',
+            'BBSSBBB.',
+            'BBBBBBBB',
+            'BBBBBMMM',
+            'BBBBMMMM',
+            '.BBBMMM.'
+        ];
+        // o.eye: 'open', 'half' or 'closed'; o.whiskers; o.flick (the back ear flicks); o.earUp (the
+        // front ear pricks up a pixel)
+        function catHeadSide(c, cat, hx, hy, o = {}) {
+            const pal = cat.pal, up = o.earUp || 0;
+            pxRect(c, hx, hy - 2, 2, 2, pal.dark);                       // ears
+            pxRect(c, hx + 4, hy - 2 - up, 2, 2 + up, pal.dark);
+            pxRect(c, hx + 1, hy - 1, 1, 1, pal.light);
+            catMap(c, hx, hy, HEAD_SIDE, catCols(cat));
+            if (o.eye === 'closed') pxRect(c, hx + 3, hy + 2, 2, 1, '#1e140f');
+            else {
+                pxRect(c, hx + 3, hy + 2, 2, 2, pal.eyes);
+                pxRect(c, hx + 4, hy + 2, 1, 1, '#1e140f');
+            }
+            pxRect(c, hx + 7, hy + 3, 1, 1, pal.nose);
+            if (o.eye === 'closed') closedEyeHD(c, cat, hx + 3, hy + 2); else eyeHD(c, cat, hx + 3, hy + 2, o.eye === 'half');
+            noseHD(c, cat, hx + 7, hy + 3, o.whiskers !== false);
+            earHD(c, cat, hx, hy - 2, !!o.flick); earHD(c, cat, hx + 4, hy - 2 - up);
+        }
+
+        // Sitting up, side on: rows y -10 to -1, from x -6. A rounded haunch at the back, the back
+        // sloping up to the shoulders, an upright chest with a pale bib, front legs straight down,
+        // and a notch between the hind paw and the front paws. (The head goes on top at (-1, -15).)
+        const SIT_BODY = [
+            '....BBBBBWW.',
+            '...SSBBBBWWW',
+            '...BBBBBWWWW',
+            '..SSSBBBWWWW',
+            '..BBBBBBWWW.',
+            '.SSSBBBBWWW.',
+            '.BBBBBBBWWW.',
+            'SSSBBBBBBBB.',
+            'BBBBBBBBBBB.',
+            'BB..........'
+        ];
+        // Standing (and walking), side on: rows y -9 to -3, from x -8. A rounded rump, the back
+        // level, a deeper chest with a pale bib, the pale belly tucked up at the waist. The legs
+        // are drawn separately (catLeg) and the head at (2, -12).
+        const STAND_BODY = [
+            '...SSBSSBS.....',
+            '.BBSSBSSBSSB...',
+            '.BBSSBSSBSSWWW.',
+            '.BBSSBSSBBBWWWW',
+            '.BBBBBBBBBBWWWW',
+            '.BBWWWWWWWWWWWW',
+            '..BWW...WWWWWW.'
+        ];
+        // Curled up asleep, side on: rows y -8 to -1, from x -9. A round dome of back, highest
+        // behind the shoulders, with the pale belly peeking out underneath. The head is tucked in
+        // low at the front, at (2, -7), and the tail wraps round under the chin.
+        const CURL_BODY = [
+            '....BSSBSS......',
+            '..SSBSSBSSB.....',
+            '.BSSBSSBSSBB....',
+            '.BSSBSSBSSBB....',
+            'BBSSBBBBBBBB....',
+            'BBBBBBBBBBBB....',
+            'BBBBBWWWWWWWBBBB',
+            '.BBBBWWWWWWWBBB.'
+        ];
 
         function drawCatBody(c, cat) {
             c.save();
@@ -5927,36 +6027,17 @@
                 catTail(c, cat, -7.3, -8.4, Math.PI - (up ? 0.55 : 0.35), 8, up ? -0.03 : 0.02);
 
             } else if (pose === 'sleep_curl' || pose === 'interact_cuddle') {
-                // Curled up sleeping croissant pose
-                pxRect(c, -8, -6 + breathe, 16, 6, pal.base);
-                pxRect(c, -7, -7 + breathe, 14, 2, pal.base);
-                // Underside / belly peek
-                pxRect(c, -4, -2, 8, 2, pal.belly);
-
-                // Stripes for Ginger & Tabby
-                if (!cat.isTuxedo) {
-                    pxRect(c, -5, -7 + breathe, 2, 4, pal.stripe);
-                    pxRect(c, -1, -7 + breathe, 2, 4, pal.stripe);
-                    pxRect(c, 3, -7 + breathe, 2, 4, pal.stripe);
-                }
-
-                // Tucked head
-                const tw = cat.dreamTwitch(), runs = tw && cat.dream.chase;
-                pxRect(c, 2, -8 + breathe, 7, 6, pal.base);
-                // Ears (one flicks in a dream)
-                pxRect(c, 3, -10 + breathe, 2, 2, pal.dark);
-                pxRect(c, 7, -10 + breathe - (tw && !runs ? 1 : 0), 2, 2, pal.dark);
-                // Closed sleeping eye
-                pxRect(c, 5, -5 + breathe, 2, 1, '#1e140f');
-                pxRect(c, 8, -5 + breathe, 1, 1, pal.nose);
-                closedEyeHD(c, cat, 5, -5 + breathe); noseHD(c, cat, 8, -5 + breathe, false);
-                earHD(c, cat, 3, -10 + breathe); earHD(c, cat, 7, -10 + breathe - (tw && !runs ? 1 : 0));
-                // White paws tucked in front (paddling away when it's chasing something in its sleep)
+                // Curled up asleep: a round dome of back (CURL_BODY) that swells on each breath in,
+                // the head tucked in low at the front, one ear pricking up in a dream
+                const cols = catCols(cat), tw = cat.dreamTwitch(), runs = tw && cat.dream.chase;
+                catMap(c, -9, -8, CURL_BODY, cols);
+                if (inhale) catMapSwell(c, -9, -8, CURL_BODY, cols, 'top', -8, 1);
+                catHeadSide(c, cat, 2, -7, { eye: 'closed', whiskers: false, earUp: tw && !runs ? 1 : 0 });
+                // Paws tucked in front (paddling away when it's chasing something in its sleep)
                 pxRect(c, 1 + tw, -1, 3, 2, pal.paws);
-                if (runs) pxRect(c, 4, -2, 2, 1, pal.paws);
+                if (runs) pxRect(c, 4, -1, 2, 1, pal.paws);
                 // Curled tail wrapping round under the chin (with a twitch of the tip)
                 catTail(c, cat, -7.6, -1.6, 1.2, 12, -0.16, 0.1 - tw * 0.2, 1.8, 1.25);
-                if (inhale) breathHD(c, cat, -6.5, -7, 8.5, cat.pattern === 'tabby' ? [-5, -1] : []);
 
             } else if (pose === 'sleep_belly') {
                 // Stretched out on back showing belly & paws in the air!
@@ -6193,16 +6274,10 @@
                 const isBatting = pose === 'play_yarn' || pose === 'interact_play';
 
                 if (isSitting) {
-                    // Upright sitting posture
-                    pxRect(c, -5, -10 + breathe, 9, 9, pal.base);
-                    // Prominent white chest/underside
-                    pxRect(c, 1, -8 + breathe, 4, 6, pal.belly);
-                    if (!cat.isTuxedo) {
-                        pxRect(c, -4, -9 + breathe, 2, 2, pal.stripe);
-                        pxRect(c, -4, -6 + breathe, 3, 1, pal.stripe);
-                        pxRect(c, -4, -4 + breathe, 3, 1, pal.stripe);
-                    }
-                    if (inhale) breathHD(c, cat, -4.5, -10, 2.5);
+                    // Sitting up: the haunch, back, chest and front legs (SIT_BODY), breathing out of its back
+                    const cols = catCols(cat);
+                    catMap(c, -6, -10, SIT_BODY, cols);
+                    if (inhale) catMapSwell(c, -6, -10, SIT_BODY, cols, 'back', -9, -3);
                     // Paws neat in front
                     pxRect(c, -4, -1, 3, 2, pal.paws);
                     pxRect(c, 1, -1, 4, 2, pal.paws);
@@ -6223,35 +6298,17 @@
                         drawFaceEyes(c, cat, 1, headY - 2, (t % 100) < 4 || cat.purrTimer > 0, 0);
                         catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 7.5, 0.03, 0.16 + 0.14 * Math.sin(t * 0.06));
                     } else {
-                        pxRect(c, -2, headY, 8, 6, pal.base);
-                        if (cat.isTuxedo) {
-                            pxRect(c, 3, headY + 3, 3, 3, pal.belly);
-                        } else {
-                            pxRect(c, 1, headY, 2, 2, pal.stripe);
-                        }
-                        // Ears
-                        pxRect(c, -2, headY - 2, 2, 2, pal.dark);
-                        pxRect(c, 4, headY - 2, 2, 2, pal.dark);
-                        pxRect(c, -1, headY - 1, 1, 1, pal.light);
                         // Blinking eyes (half shut on the way down and up again)
                         const bt = t % 90, blink = (bt >= 1 && bt <= 3) || cat.purrTimer > 0, half = !blink && (bt === 0 || bt === 4);
-                        if (blink) {
-                            pxRect(c, 2, headY + 2, 2, 1, '#1e140f');
-                        } else {
-                            pxRect(c, 2, headY + 2, 2, 2, pal.eyes);
-                            pxRect(c, 3, headY + 2, 1, 1, '#1e140f');
-                        }
-                        pxRect(c, 5, headY + 3, 1, 1, pal.nose);
-                        if (blink) closedEyeHD(c, cat, 2, headY + 2); else eyeHD(c, cat, 2, headY + 2, half);
-                        noseHD(c, cat, 5, headY + 3, pose !== 'proud'); earHD(c, cat, -2, headY - 2, earFlick(cat)); earHD(c, cat, 4, headY - 2);
+                        catHeadSide(c, cat, -1, headY, { eye: blink ? 'closed' : half ? 'half' : 'open', whiskers: pose !== 'proud', flick: earFlick(cat) });
 
                         if (pose === 'proud') {
                             // The caught mouse, dangling from its mouth
                             const sway = Math.round(Math.sin(t * 0.15));
-                            pxRect(c, 5, headY + 4, 3, 3, '#9ca3af');
-                            pxRect(c, 5, headY + 6, 2, 1, '#d1d5db');
-                            pxRect(c, 7, headY + 3, 1, 1, '#f9a8d4');
-                            pxRect(c, 6 + sway, headY + 7, 1, 3, '#f9a8d4');
+                            pxRect(c, 6, headY + 4, 3, 3, '#9ca3af');
+                            pxRect(c, 6, headY + 6, 2, 1, '#d1d5db');
+                            pxRect(c, 8, headY + 3, 1, 1, '#f9a8d4');
+                            pxRect(c, 7 + sway, headY + 7, 1, 3, '#f9a8d4');
                         }
 
                         // Tail curled round on the floor, the tip lifting and settling
@@ -6278,19 +6335,8 @@
                     catLeg(c, cat, -5, -1.9, ...legAt(-5, 0), pal.dark, 1.8);
                     catLeg(c, cat, 3, -1.9, ...legAt(3, 0.25), pal.dark, 1.8);
 
-                    // Main torso
-                    pxRect(c, -7, -8 + bodyBob, 13, 6, pal.base);
-                    // Distinct White / Light Underside Belly Strip!
-                    pxRect(c, -5, -4 + bodyBob, 10, 2, pal.belly);
-                    // Chest bib
-                    pxRect(c, 3, -7 + bodyBob, 4, 4, pal.belly);
-
-                    // Back stripes for Ginger & Tabby
-                    if (!cat.isTuxedo) {
-                        pxRect(c, -5, -8 + bodyBob, 2, 4, pal.stripe);
-                        pxRect(c, -1, -8 + bodyBob, 2, 4, pal.stripe);
-                        pxRect(c, 2, -8 + bodyBob, 2, 3, pal.stripe);
-                    }
+                    // the body: rounded rump, level back, deep chest with a bib, belly tucked up at the waist
+                    catMap(c, -8, -9 + bodyBob, STAND_BODY, catCols(cat));
 
                     // the near legs, in front (or a paw up, batting at something)
                     catLeg(c, cat, -2, -2.6, ...legAt(-2, 0.5), pal.base);
@@ -6302,29 +6348,9 @@
                     // Head position (lowered if eating/drinking)
                     const headX = isBowingHead ? 4 : 2;
                     const headY = (isBowingHead ? -8 : -12) + bodyBob;
-                    pxRect(c, headX, headY, 7, 6, pal.base);
-                    if (cat.isTuxedo) {
-                        pxRect(c, headX + 4, headY + 3, 3, 3, pal.belly);
-                    } else {
-                        pxRect(c, headX + 2, headY, 2, 2, pal.stripe);
-                    }
-                    // Ears
-                    pxRect(c, headX, headY - 2, 2, 2, pal.dark);
-                    pxRect(c, headX + 5, headY - 2, 2, 2, pal.dark);
-                    pxRect(c, headX + 1, headY - 1, 1, 1, pal.light);
-
-                    // Eyes & Nose (half shut on the way into a blink and out of it)
+                    // Eyes half shut on the way into a blink and out of it
                     const bt = t % 80, blink = (bt >= 1 && bt <= 2) || isBowingHead || cat.purrTimer > 0, half = !blink && (bt === 0 || bt === 3);
-                    if (blink) {
-                        pxRect(c, headX + 3, headY + 2, 2, 1, '#1e140f');
-                    } else {
-                        pxRect(c, headX + 3, headY + 2, 2, 2, pal.eyes);
-                        pxRect(c, headX + 4, headY + 2, 1, 1, '#1e140f');
-                    }
-                    pxRect(c, headX + 6, headY + 3, 1, 1, pal.nose);
-                    if (blink) closedEyeHD(c, cat, headX + 3, headY + 2); else eyeHD(c, cat, headX + 3, headY + 2, half);
-                    noseHD(c, cat, headX + 6, headY + 3, !isBowingHead);
-                    earHD(c, cat, headX, headY - 2, !isWalking && earFlick(cat)); earHD(c, cat, headX + 5, headY - 2);
+                    catHeadSide(c, cat, headX, headY, { eye: blink ? 'closed' : half ? 'half' : 'open', whiskers: !isBowingHead, flick: !isWalking && earFlick(cat) });
                 }
             }
 
