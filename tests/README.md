@@ -46,6 +46,7 @@ Options, as environment variables:
 | `moon_click.py <html>` | Clicking the moon at night summons the UFO; clicking the UFO sends it off |
 | `livewx_test.py <html>` | Real local weather, with the weather service mocked: town search, every kind of weather, going offline, and reloading |
 | `pose_sheet.py <html> <out.png> [pose ...]` | Not a check: draws every cat pose (or the ones you name) for four different coats through the game's real drawing code, side by side, for looking over the artwork (at whatever resolution the canvas is drawn) |
+| `noise_test.py <html>` | Patterned cats sit still in browsers that add anti-fingerprinting noise to canvas read-backs (Safari, Brave and Firefox can): fakes the noise, sits a tabby, a tortie and a calico down, and checks nothing on their bodies changes from frame to frame |
 | `frame_strip.py <html> <out.png> <pose> [frames] [step] [coat] [pattern] [facing]` | Not a check: one cat in one pose over consecutive frames, side by side, following the cat as it moves (`walk` with a step of 0.5, say). For looking over animations: the markings should stay put on its body, or it strobes |
 | `touch_test.py <html>` | Phones: tapping cats (and just missing them), treats, brushing and the laser with a finger, hide and seek, the screensaver, the room staying pinned while you scroll, turning the phone sideways, and the desktop layout unchanged |
 

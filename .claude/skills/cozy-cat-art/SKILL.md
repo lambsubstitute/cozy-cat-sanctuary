@@ -59,6 +59,7 @@ Options: `outline` (cats use `-0.9`, default `-0.8`), `light` (0.3), `dim` (0.34
 
 - **A sprite must fit its scratch box**: within 48 room pixels left or right of `(wx, wy)`, 72 above and 24 below (`FX_BOX`, `FX_OX`, `FX_OY`). Anything outside is silently cut off.
 - **spriteFX costs a `getImageData` per sprite per frame**: keep sprites compact, and cache still ones.
+- **Read-backs can be noisy.** Browsers with anti-fingerprinting protection (Safari, Brave, Firefox, and Beef's) nudge a few read-back values by a level or two, differently every time. spriteFX compares colours exactly, so that noise made patterned cats shimmer while sitting still. `FX_NOISY` detects it at start-up; when it's on, every solid fill colour painted into a sprite is noted (`fxInks`) and the read-back is snapped to the nearest one (`fxClean`). Paint sprites with solid colour strings through `fillStyle` so they're noted. Never add another `getImageData` without the same treatment, and run `tests/noise_test.py` after any change to spriteFX or the cats.
 - Things on the floor go in the `drawables` list with their `y`, so they're drawn back to front.
 
 Inside a sprite, draw with the right tool for each job:
@@ -131,7 +132,7 @@ export PYTHONPATH=$PWD/tests
 EXTRA=1 python3 tests/sim_test.py $GAME 36000 300 1 2 > run.txt && python3 tests/sum2.py run.txt
 ```
 
-All counts (overlaps, illegal positions, bad jumps, errors) must be zero. Run `touch_test.py` too if anything on the page around the canvas changed.
+All counts (overlaps, illegal positions, bad jumps, errors) must be zero. Run `touch_test.py` too if anything on the page around the canvas changed, and `noise_test.py` (cats sitting still in a browser with noisy canvas read-backs) after any change to spriteFX or the cat drawing.
 
 ### frame_strip.py
 

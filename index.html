@@ -10438,6 +10438,65 @@
         const fxSolid = new Uint8Array(FB * FB);
         const fxEdge = new Uint32Array(FB * FB);
         const fxDetail = new Uint8Array(FB * FB);
+        // Some browsers guard against fingerprinting (Safari, Brave and Firefox can all do this) by
+        // adding faint random noise to whatever a page reads back from a canvas: a level or two on a
+        // few pixels, different every time. spriteFX reads each sprite back and compares colours
+        // exactly (to find the fine details, the coat markings and where fur meets fur), so that noise
+        // made patterned cats shimmer while they sat still. So every solid colour painted into a sprite
+        // is noted as it's used, and what comes back is snapped to the nearest of them (see fxClean).
+        const fxInks = new Map();                  // u32 -> [r, g, b]: the solid colours painted into this sprite
+        const fxSnap = new Map();                  // noisy u32 -> the ink it really is
+        function fxInk(v) {
+            if (typeof v !== 'string' || fxInks.size > 400) return;
+            const m = v[0] === '#' ? null : v.match(/[\d.]+/g);
+            if (m && m.length > 3 && +m[3] < 0.99) return;   // see-through colours blend, so never come back as themselves
+            const k = u32(v);
+            if (!fxInks.has(k)) fxInks.set(k, [k & 255, (k >>> 8) & 255, (k >>> 16) & 255]);
+        }
+        // Does this browser add that noise? Checked once: paint a few known colours, read them back
+        // twice, and see if anything has moved. (Only then are the inks noted and the read-backs
+        // snapped, so every other browser draws exactly as before.)
+        const FX_NOISY = (() => {
+            try {
+                const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+                const g = cv.getContext('2d', { willReadFrequently: true });
+                const cols = [[133, 109, 93], [41, 31, 26], [234, 108, 32], [241, 237, 230]];
+                cols.forEach(([r, gr, b], i) => { g.fillStyle = `rgb(${r}, ${gr}, ${b})`; g.fillRect(0, i * 16, 64, 16); });
+                const a = g.getImageData(0, 0, 64, 64).data, b2 = g.getImageData(0, 0, 64, 64).data;
+                for (let k = 0; k < a.length; k += 4) {
+                    const [r, gr, b] = cols[Math.floor(k / 4 / 64 / 16)];
+                    if (a[k] !== r || a[k + 1] !== gr || a[k + 2] !== b || a[k + 3] !== 255 || a[k] !== b2[k] || a[k + 1] !== b2[k + 1] || a[k + 2] !== b2[k + 2]) return true;
+                }
+                return false;
+            } catch (e) { return false; }
+        })();
+        const FILL = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'fillStyle');
+        function fxTrackInks(g) {
+            Object.defineProperty(g, 'fillStyle', { configurable: true, get() { return FILL.get.call(this); }, set(v) { fxInk(v); FILL.set.call(this, v); } });
+        }
+        if (FX_NOISY) [fxLoG, fxHiG].forEach(g => fxTrackInks(g));
+        // Clean up a sprite read back from a canvas (pixels as u32, rows w long, over x0..x1, y0..y1):
+        // next to nothing becomes nothing, and a solid colour within a few levels of an ink becomes that ink
+        function fxClean(px, w, x0, y0, x1, y1) {
+            for (let y = y0; y <= y1; y++) for (let x = x0, p = y * w + x0; x <= x1; x++, p++) {
+                const v = px[p], a = v >>> 24;
+                if (a <= 6) { px[p] = 0; continue; }
+                if (a < 249) continue;                                    // soft things (shadows) are left as they are
+                const o = (v | 0xff000000) >>> 0;
+                if (fxInks.has(o)) { px[p] = o; continue; }
+                let s = fxSnap.get(o);
+                if (s === undefined) {
+                    s = o; let best = 5;
+                    const r = o & 255, g = (o >>> 8) & 255, b = (o >>> 16) & 255;
+                    for (const [k, c] of fxInks) {
+                        const d = Math.max(Math.abs(c[0] - r), Math.abs(c[1] - g), Math.abs(c[2] - b));
+                        if (d < best) { best = d; s = k; }
+                    }
+                    fxSnap.set(o, s);
+                }
+                px[p] = s;
+            }
+        }
         // A stand-in drawing context that passes everything on to both canvases (and moves, clips
         // and saves the mask along with them, so marks land in the right place)
         const FX_MASK_TOO = new Set(['save', 'restore', 'translate', 'scale', 'rotate', 'transform', 'setTransform', 'resetTransform', 'beginPath', 'rect', 'clip', 'moveTo', 'lineTo', 'closePath', 'arc']);
@@ -10520,6 +10579,7 @@
             const real = ctx, realSnap = SNAP;
             fxReach[0] = fxReach[1] = FB; fxReach[2] = fxReach[3] = -1;
             fxCoatRects.length = 0;
+            fxInks.clear(); fxSnap.clear();
             try {
                 [[fxLoG, 1], [fxHiG, RES], [fxMaskG, RES]].forEach(([g, s]) => {
                     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -10542,7 +10602,7 @@
             const B = FX_BOX, lo = new Uint32Array(fxLoG.getImageData(0, 0, B, B).data.buffer);
             let x0 = B, y0 = B, x1 = -1, y1 = -1;
             for (let p = 0, y = 0; y < B; y++) for (let x = 0; x < B; x++, p++) {
-                if (lo[p] >>> 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                if ((lo[p] >>> 24) > (FX_NOISY ? 6 : 0)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
             }
             if (fxReach[2] >= 0) {
                 x0 = Math.min(x0, Math.floor(fxReach[0] / RES)); y0 = Math.min(y0, Math.floor(fxReach[1] / RES));
@@ -10554,6 +10614,12 @@
             const R = RES, fx0 = x0 * R, fy0 = y0 * R, fw = (x1 - x0 + 1) * R, fh = (y1 - y0 + 1) * R;
             const hi = new Uint32Array(fxHiG.getImageData(fx0, fy0, fw, fh).data.buffer);
             const mask = fxReach[2] >= 0 ? new Uint32Array(fxMaskG.getImageData(fx0, fy0, fw, fh).data.buffer) : null;
+            // snap away any read-back noise (see fxClean): the low-res drawing one pixel wider all round,
+            // because the blow-up looks at neighbours
+            if (FX_NOISY) {
+                fxClean(lo, B, Math.max(0, x0 - 1), Math.max(0, y0 - 1), Math.min(B - 1, x1 + 1), Math.min(B - 1, y1 + 1));
+                fxClean(hi, fw, 0, 0, fw - 1, fh - 1);
+            }
             // 1. blow the low-res drawing up (EPX), and lay the full-resolution details over it
             const F = FB, img = fxEdge, epx = opt.round !== false && R === 2;
             const L = (x, y) => (x < 0 || y < 0 || x >= B || y >= B) ? 0 : lo[y * B + x];
@@ -10570,7 +10636,7 @@
                 const hx = (x - x0) * R, hy = (y - y0) * R, q = hy * fw + hx, p = (y * R) * F + x * R;
                 // (on the full-resolution drawing, fine details are whatever doesn't match the low-res one)
                 for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
-                    const h = hi[q + j * fw + i], k = p + j * F + i, d = h !== P || (mask && mask[q + j * fw + i] >>> 24);
+                    const h = hi[q + j * fw + i], k = p + j * F + i, d = h !== P || (mask && (mask[q + j * fw + i] >>> 24) > 127);
                     img[k] = d ? h : R === 2 ? (j ? (i ? e4 : e3) : (i ? e2 : e1)) : P;
                     fxDetail[k] = d ? 1 : 0;
                 }
