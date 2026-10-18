@@ -114,8 +114,23 @@
         body.screensaver #ssExit { display: flex; opacity: 0; transition: opacity 0.4s; }
         body.screensaver.ss-awake #ssExit { opacity: 1; }
 
-        /* Toasts sit centred over the room and wrap only when they must */
-        #toastBanner { width: max-content; max-width: calc(100% - 24px); text-align: center; }
+        /* Toasts: a little brass-edged plaque centred over the top of the room, wrapping only when
+           it must. The text grows with the room (--toast-px and --toast-sh are set from the room's
+           width, see showToast), so it reads the same in a small window, a big one or the screensaver. */
+        #toastBanner {
+            width: max-content; max-width: calc(100% - 24px); text-align: center;
+            font-size: var(--toast-px, 18px); line-height: 1.05; letter-spacing: 0.02em;
+            padding: 0.2em 0.65em 0.28em;
+            color: #fff1cf;
+            background: #24170e;
+            border: 3px solid #0f0906;
+            border-radius: 3px;
+            box-shadow: inset 0 0 0 2px #e0a33a, inset 0 0 0 4px #5a3a22, 0 4px 0 #0c0805, 0 10px 24px rgba(0, 0, 0, 0.55);
+            text-shadow: var(--toast-sh, 1px) var(--toast-sh, 1px) 0 #0c0805, 0 0 1px #0c0805;
+            scale: 0.94;
+            transition: opacity 0.3s, scale 0.18s ease-out;
+        }
+        #toastBanner.toast-on { scale: 1; }
 
         /* ---- Touch screens ---- */
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -155,7 +170,7 @@
             #toolBar .hand-label { display: none; }
             #toolBar > button { justify-content: center; gap: 4px; padding: 5px 2px; font-size: 17px; }
             #toolHint { grid-column: 1 / -1; margin: 0; text-align: center; font-size: 15px; line-height: 1.1; min-height: 1.1em; }
-            #toastBanner { top: 8px; font-size: 16px; line-height: 1.15; padding: 3px 8px; }
+            #toastBanner { top: 8px; }
             footer #activitiesPanel { order: -1; }
             #activitiesPanel .grid > button { min-height: 46px; }
             #turnHint { display: block; }
@@ -181,7 +196,6 @@
             #toolBar .hand-label { margin: 0 0 2px; text-align: center; }
             #toolBar > button { justify-content: flex-start; padding: 6px 8px; font-size: 17px; }
             #toolHint { margin: 0; text-align: center; font-size: 15px; line-height: 1.1; }
-            #toastBanner { font-size: 16px; }
         }
 
         /* Custom scrollbar */
@@ -263,7 +277,7 @@
                 <span>✕</span><span>Exit</span>
             </button>
             <!-- Floating Toast Notification inside Diorama frame -->
-            <div id="toastBanner" class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a110b]/90 border-2 border-amber-400/80 text-amber-200 px-3 py-1 rounded text-lg tracking-wide opacity-0 transition-opacity duration-300 shadow-lg">
+            <div id="toastBanner" class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 opacity-0">
                 Moe is purring happily! ♥
             </div>
         </div>
@@ -12648,11 +12662,24 @@
             if (!banner) return;
             banner.textContent = tapify(msg);
             banner.style.opacity = '1';
+            banner.classList.add('toast-on');
             clearTimeout(toastTimeout);
             toastTimeout = setTimeout(() => {
                 banner.style.opacity = '0';
+                banner.classList.remove('toast-on');
             }, 2200);
         }
+        // The toast's text is about a 28th of the room's width (18 to 38 pixels high), with a
+        // drop shadow to match, whatever size the room is drawn at
+        function sizeToast(w) {
+            const banner = document.getElementById('toastBanner');
+            if (!banner || !w) return;
+            const px = Math.round(clamp(w / 28, 18, 38));
+            banner.style.setProperty('--toast-px', px + 'px');
+            banner.style.setProperty('--toast-sh', Math.max(1, Math.round(px / 14)) + 'px');
+        }
+        if (window.ResizeObserver) new ResizeObserver(([e]) => sizeToast(e.contentRect.width)).observe(canvas);
+        else sizeToast(canvas.getBoundingClientRect().width);
 
         // Map a pointer event to room (canvas pixel) coordinates
         function roomCoords(e) {
