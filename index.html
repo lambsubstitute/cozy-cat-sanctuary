@@ -6215,9 +6215,11 @@
                     pxRect(c, -4, -1, 2, 1, pal.paws);
                     pxRect(c, 2, -1, 2, 1, pal.paws);
                 }
-                // Swishing tail, hanging down over the edge
+                // Swishing tail: on a ledge it hangs down over the edge; on the floor it lies out
+                // to one side, the tip lifting and flicking
                 const swish = Math.sin(t * (chatter ? 0.55 : 0.12));
-                catTail(c, cat, 0.2, -1.6, Math.PI / 2 - swish * 0.65, 5.5, swish * 0.12, swish * 0.25);
+                if (cat.surface === 'floor') catTail(c, cat, 3.6, -1.2, 0.05 - swish * 0.08, 13, -0.01, -0.1 + swish * 0.1, 2.6, 1.7);
+                else catTail(c, cat, 0.2, -1.6, Math.PI / 2 - swish * 0.45, 12.5, swish * 0.06, swish * 0.14, 2.6, 1.7);
 
             } else if (pose === 'stretching') {
                 // The big stretch, a play bow: haunches high, the back sloping down to the chest held
@@ -6304,7 +6306,7 @@
                         // Head turned to look straight out at you
                         drawFaceHead(c, cat, 1, headY - 2);
                         drawFaceEyes(c, cat, 1, headY - 2, (t % 100) < 4 || cat.purrTimer > 0, 0);
-                        catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 7.5, 0.03, 0.16 + 0.14 * Math.sin(t * 0.06));
+                        catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 14, 0.015, 0.11 + 0.08 * Math.sin(t * 0.06), 2.6, 1.7);
                     } else {
                         // Blinking eyes (half shut on the way down and up again)
                         const bt = t % 90, blink = (bt >= 1 && bt <= 3) || cat.purrTimer > 0, half = !blink && (bt === 0 || bt === 4);
@@ -6320,7 +6322,7 @@
                         }
 
                         // Tail curled round on the floor, the tip lifting and settling
-                        catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 7.5, 0.03, 0.16 + 0.14 * Math.sin(t * 0.06));
+                        catTail(c, cat, -4.6, -1.2, Math.PI - 0.02, 14, 0.015, 0.11 + 0.08 * Math.sin(t * 0.06), 2.6, 1.7);
                     }
 
                 } else {
