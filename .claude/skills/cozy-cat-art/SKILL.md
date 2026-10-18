@@ -67,6 +67,7 @@ Inside a sprite, draw with the right tool for each job:
 | --- | --- |
 | `pxRect(c, x, y, w, h, col)` | The basic shape, in whole room pixels. Gets EPX rounding, shading, fur and coat markings. |
 | `hd(c, x, y, w, h, col)` / `hdClear(...)` | Fine details at half-pixel steps (eyes, noses, whiskers, ear tips, toes) or notches cut out of the shape. Never use them for the basic shape. |
+| `hdFur(c, x, y, w, h, col)` | A fine detail that's really coat, in `pal.base` or `pal.stripe`: a breath swelling the outline, fur closing over an eye on a blink. Like `hd`, but the coat markings and fur reach it, so it takes the colour of the patch it's in. |
 | `fineMap(c, x, y, rows, pal)`, `fineTri(...)` | Small fine-pixel bitmaps and triangles. |
 | `fineDabs(c, [[x, y, r, col]...])` with `roundShader(col, r, nx, ny)` | Smooth, curved, moving parts: anything that bends or moves half a pixel at a time. |
 | `catMap(c, x, y, rows, catCols(cat))` | A body as a shaped bitmap, one letter per room pixel: `B` coat, `S` tabby markings, `W` pale chest and belly, `M` muzzle (white on a tuxedo), `D` ears. This is how the rounded silhouettes are drawn (`SIT_BODY`, `STAND_BODY`, `CURL_BODY`, `LOAF_BODY`, `STRETCH_BODY`, and the window-watching cat). Prefer it to stacking `pxRect` boxes. |
@@ -80,13 +81,15 @@ Never call canvas paths (`arc`, `lineTo`, `drawImage`...) in cat drawing code: k
 
 - **Coordinates**: `(0, 0)` is on the ground under the middle of the cat; it faces **right** (+x is forward) and up is **-y**. `drawCatBody` flips it with `c.scale(-1, 1)` when it faces left, so draw every pose facing right. A standing adult's body is about `x -7..6`, head `x 2..9`, ears up to `y -14`.
 - **Only ever use the palette**: `cat.pal.base`, `dark`, `stripe`, `light`, `belly`, `paws`, `nose`, `eyes` (built by `lookPalette`). Shade them with `shade` or mix them with `blendColors` / `mixHex`; never hard-code a coat colour. The only fixed colours are the small face details: `LID`, `PUPIL`, `WHISKER`, the white glint, the near-black `'#1e140f'` and the soft dark mouth line.
-- **Coat areas must be exactly `pal.base` and markings exactly `pal.stripe`** in `pxRect` (in a `catMap`, the letters `B` and `S`). `coatPattern` works by finding those two colours and turning them into solid, calico or tortoiseshell markings; anything shaded, mixed or drawn with `hd` is left alone.
+- **Coat areas must be exactly `pal.base` and markings exactly `pal.stripe`** in `pxRect` (in a `catMap`, the letters `B` and `S`). `coatPattern` works by finding those two colours and turning them into solid, calico or tortoiseshell markings; anything shaded, mixed or drawn with `hd` is left alone (use `hdFur` for fine details that should be coat).
 - **Tuxedo**: check `cat.isTuxedo` and draw a white blaze or bib in `pal.belly` instead of stripes, the way every existing pose does. Colourpoint works through the palette (and `catTail`).
 - **Kittens** are the same sprites at `KITTEN_SIZE` (0.75). Check every new pose on a kitten.
 
 ### The strobe rule
 
 Any noise, hash or pattern on something that moves must be worked out from the **sprite's own coordinates** (the scratch canvas, which moves with the sprite), never from its room position or the clock. Otherwise the markings slide across the body as it walks, and it flickers. (This was the tortoiseshell strobe: coat patches computed from room position. `coatPattern` and the fur use scratch-canvas coordinates; `catTail` uses distance along the tail.)
+
+The same goes for anything that comes and goes, like a breath or a blink: a fine detail drawn in plain `pal.base` or `pal.stripe` with `hd` is skipped by `coatPattern`, so on a calico, tortie or solid cat it flashes plain colour across the patches every time it appears. (This was the sitting-cat shimmer: the breath along the back.) Draw coat-coloured details that appear and disappear with `hdFur`. Check it with a frame-by-frame diff across a breath (`inhale` flips when `Math.sin(t * 2π / 110 + cat.id)` crosses 0.15) on a calico and a tortie.
 
 ### Animation
 

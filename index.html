@@ -5412,6 +5412,13 @@
             g.fillRect(X, Y, Wd, Ht);
             if (g === fxHiG) fxMark(X, Y, Wd, Ht);
         }
+        // A fine detail that's part of the coat (a breath swelling the outline, fur closing over an eye
+        // on a blink): drawn like hd, but a cat's markings (coatPattern) and fur reach it too, so on a
+        // calico or a tortie it takes the colour of the patch it's in rather than flashing plain coat
+        function hdFur(c, x, y, w, h, color) {
+            fxCoatMark = true;
+            try { hd(c, x, y, w, h, color); } finally { fxCoatMark = false; }
+        }
 
         // Clear a fine patch of a sprite's full-resolution drawing (to carve a point or a notch out
         // of its basic shape). Only means anything inside spriteFX.
@@ -5445,11 +5452,11 @@
         function eyeHD(c, cat, x, y, half = false) {
             const e = cat.pal.eyes;
             if (half) {                                                       // half shut, mid-blink
-                hd(c, x, y, 2, 0.5, cat.pal.base); hd(c, x, y + 0.5, 2, 0.5, LID);
+                hdFur(c, x, y, 2, 0.5, cat.pal.base); hd(c, x, y + 0.5, 2, 0.5, LID);
                 hd(c, x, y + 1, 2, 1, shade(e, 0.15)); hd(c, x + 1, y + 1, 0.5, 1, PUPIL);
                 return;
             }
-            hd(c, x, y, 0.5, 0.5, cat.pal.base);                             // rounded at the back
+            hdFur(c, x, y, 0.5, 0.5, cat.pal.base);                          // rounded at the back
             hd(c, x + 0.5, y, 1.5, 0.5, LID);
             hd(c, x, y + 0.5, 2, 1.5, e);
             hd(c, x, y + 1.5, 2, 0.5, shade(e, 0.3));
@@ -5458,7 +5465,7 @@
         }
         // A closed eye, the 2 x 1 bar at (x, y): a contented curve instead (upside down for a cat on its back)
         function closedEyeHD(c, cat, x, y, flip = false) {
-            hd(c, x, y, 2, 1, cat.pal.base);
+            hdFur(c, x, y, 2, 1, cat.pal.base);
             const a = flip ? 0.5 : 0, b = flip ? 0 : 0.5;
             hd(c, x, y + a, 0.5, 0.5, LID); hd(c, x + 0.5, y + b, 1, 0.5, LID); hd(c, x + 1.5, y + a, 0.5, 0.5, LID);
         }
@@ -5638,7 +5645,7 @@
             hd(c, hx - 4.5, hy - 1, 1, 1, inner); hd(c, hx + 3.5, hy - 1, 1, 1, inner);
             const fur = cat.isTuxedo ? pal.belly : pal.base;
             hd(c, hx - 1, hy + 5, 0.5, 0.5, blendColors(pal.nose, '#ffffff', 0.35)); hd(c, hx + 0.5, hy + 5, 0.5, 0.5, shade(pal.nose, -0.25));
-            hd(c, hx - 1, hy + 5.5, 0.5, 0.5, fur); hd(c, hx + 0.5, hy + 5.5, 0.5, 0.5, fur);
+            hdFur(c, hx - 1, hy + 5.5, 0.5, 0.5, fur); hdFur(c, hx + 0.5, hy + 5.5, 0.5, 0.5, fur);
             hd(c, hx - 0.5, hy + 6, 1, 0.5, 'rgba(30, 14, 10, 0.55)');
             hd(c, hx - 1.5, hy + 6.5, 1, 0.5, 'rgba(30, 14, 10, 0.45)'); hd(c, hx + 0.5, hy + 6.5, 1, 0.5, 'rgba(30, 14, 10, 0.45)');
             hd(c, hx - 7, hy + 5.5, 3, 0.5, WHISKER); hd(c, hx - 7, hy + 6.5, 2.5, 0.5, WHISKER);
@@ -5650,7 +5657,7 @@
                 pxRect(c, hx - 4, hy + 3, 3, 1, '#1e140f');
                 pxRect(c, hx + 1, hy + 3, 3, 1, '#1e140f');
                 [hx - 4, hx + 1].forEach(ex => {                     // contented curves
-                    hd(c, ex, hy + 3, 3, 1, cat.pal.base);
+                    hdFur(c, ex, hy + 3, 3, 1, cat.pal.base);
                     hd(c, ex, hy + 3, 0.5, 0.5, LID); hd(c, ex + 0.5, hy + 3.5, 2, 0.5, LID); hd(c, ex + 2.5, hy + 3, 0.5, 0.5, LID);
                 });
             } else {
@@ -5661,7 +5668,7 @@
                 // fine details: almond eyes with a dark lid, slit pupils and a glint
                 [hx - 4, hx + 1].forEach(ex => {
                     const e = cat.pal.eyes, fur = cat.pal.base;
-                    hd(c, ex, hy + 2, 0.5, 0.5, fur); hd(c, ex + 2.5, hy + 2, 0.5, 0.5, fur);   // round eyes
+                    hdFur(c, ex, hy + 2, 0.5, 0.5, fur); hdFur(c, ex + 2.5, hy + 2, 0.5, 0.5, fur);   // round eyes
                     hd(c, ex + 0.5, hy + 2, 2, 0.5, shade(e, -0.45));
                     hd(c, ex, hy + 2.5, 3, 1.5, e);
                     hd(c, ex, hy + 3.5, 3, 0.5, shade(e, 0.3));
@@ -5840,14 +5847,14 @@
                     const x = x0 + i;
                     if (x < from || x > to) continue;
                     const j = rows.findIndex(r => cols[r[i]]);
-                    if (j >= 0) hd(c, x, y0 + j - 0.5, 1, 0.5, cols[rows[j][i]]);
+                    if (j >= 0) hdFur(c, x, y0 + j - 0.5, 1, 0.5, cols[rows[j][i]]);
                 }
             } else {
                 rows.forEach((r, j) => {
                     const y = y0 + j;
                     if (y < from || y > to) return;
                     const i = [...r].findIndex(ch => cols[ch]);
-                    if (i >= 0) hd(c, x0 + i - 0.5, y, 0.5, 1, cols[r[i]]);
+                    if (i >= 0) hdFur(c, x0 + i - 0.5, y, 0.5, 1, cols[r[i]]);
                 });
             }
         }
@@ -10448,12 +10455,16 @@
         // Mark a rectangle (in the sprite's own coordinates) as drawn at full resolution: on the
         // mask, and in the box of fine pixels that the full-resolution drawing reaches
         const fxReach = [0, 0, 0, 0];
+        // Fine details that are really coat (see hdFur), as boxes of fine pixels on the scratch canvas
+        let fxCoatMark = false;
+        const fxCoatRects = [];
         function fxMark(x, y, w, h) {
             fxMaskG.fillRect(x, y, w, h);
             const m = fxHiG.getTransform();
             const ax = m.a * x + m.e, bx = m.a * (x + w) + m.e, ay = m.d * y + m.f, by = m.d * (y + h) + m.f;
             fxReach[0] = Math.min(fxReach[0], ax, bx); fxReach[1] = Math.min(fxReach[1], ay, by);
             fxReach[2] = Math.max(fxReach[2], ax, bx); fxReach[3] = Math.max(fxReach[3], ay, by);
+            if (fxCoatMark) fxCoatRects.push([Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)]);
         }
         let fxBusy = false;
         // Coats with patches (calico, tortoiseshell) or no markings at all (solid colours): every
@@ -10508,6 +10519,7 @@
             fxBusy = true;
             const real = ctx, realSnap = SNAP;
             fxReach[0] = fxReach[1] = FB; fxReach[2] = fxReach[3] = -1;
+            fxCoatRects.length = 0;
             try {
                 [[fxLoG, 1], [fxHiG, RES], [fxMaskG, RES]].forEach(([g, s]) => {
                     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -10564,6 +10576,19 @@
                 }
             }
             const X0 = fx0, Y0 = fy0, X1 = fx0 + fw - 1, Y1 = fy0 + fh - 1;
+            if (opt.coat && fxCoatRects.length) {
+                // fine details that are really coat (a breath, fur over a blinking eye): where they're
+                // plain coat or tabby colour, let the markings and the fur reach them, so they match
+                // the patch they're in instead of flashing plain colour on a calico or tortie
+                const base = u32(opt.coat.pal.base), stripe = u32(opt.coat.pal.stripe);
+                for (const [ax, ay, bx, by] of fxCoatRects) {
+                    for (let y = Math.max(Y0, Math.floor(ay)); y < Math.min(Y1 + 1, Math.ceil(by)); y++)
+                        for (let x = Math.max(X0, Math.floor(ax)); x < Math.min(X1 + 1, Math.ceil(bx)); x++) {
+                            const p = y * F + x;
+                            if (img[p] === base || img[p] === stripe) fxDetail[p] = 0;
+                        }
+                }
+            }
             if (opt.coat) coatPattern(opt.coat, img, X0, Y0, X1, Y1);
             if (opt.fur) {
                 // Fur: where one colour of coat meets another, a few strands of each poke across the
