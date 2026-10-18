@@ -37,7 +37,7 @@ python3 tests/sum2.py run.txt                             # overlaps, illegal po
 
 - Run the simulation after any change to behaviour, movement, navigation or anything a cat can stand on. It takes a few minutes, so run it in the background.
 - Focused checks: `creator_flow.py`, `household_persist.py`, `startover_test.py`, `livewx_test.py`, `moon_click.py`, `stray_batch.py`, `touch_test.py`. Run the ones that touch what you changed.
-- For artwork, render it and look: `tests/pose_sheet.py` (every pose, four coats) and `tests/frame_strip.py` (one pose frame by frame). Any change to `spriteFX` or the cat drawing also needs `tests/noise_test.py`.
+- For artwork, render it and look: `tests/pose_sheet.py` (every pose, four coats) and `tests/frame_strip.py` (one pose frame by frame), and `tests/symbol_sheet.py` for the hearts, Zs, "!"s and bubbles. Any change to `spriteFX` or the cat drawing also needs `tests/noise_test.py`.
 - Beef's browser adds anti-fingerprinting noise to canvas read-backs, and a headless test browser doesn't. If something looks fine in tests but he sees flicker, suspect that first (`FX_NOISY` in the 16-BIT ART section).
 - Hooks the tests use, set before the page loads: `window.__skipCreator` (skip choosing cats), `window.__household` (a list of cat looks to move in), `window.__fakeNow` (a fixed time), and an overridden `requestAnimationFrame` so the test steps each frame. (The seed and the time come from `?seed=` and `?fake=` on the page address, read by the tests' own setup script, not by the game.)
 - Test output (`*.png`, `*.txt`) is git-ignored; keep scratch files out of the repo.

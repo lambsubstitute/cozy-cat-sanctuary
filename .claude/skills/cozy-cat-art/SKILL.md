@@ -47,6 +47,14 @@ The still room is painted once into `roomBackdrop()` (repainted only when the fe
 
 Follow the existing `paintWallpaper`, `paintFloor` and furniture painters, and `paintPortrait` for something detailed and procedural. Anything that changes now and then but isn't animated (a portrait, say) is painted once per look and cached by a key.
 
+### Symbols: hearts, Zs, sparkles, "!", notes, bubbles
+
+The little pictures that float over the cats, and the speech and dream bubbles with their pictures, live in the **SYMBOLS** and **SPEECH BUBBLES** sections. Each is a bitmap of fine pixels (one character per half room pixel), finished once by `symbolArt(key, rows, pal, opt)`: light along open top and left edges, shade along bottom and right ones, then a fine outline (a deep shade of its own colour, or `ink`). Options: `flat` (characters left unshaded: eyes, glints), `late` (painted after the outline: glows), `light`/`dark`/`outline`. The result is cached by `key`; draw it with `drawSymbol(cv, cx, cy)`, which centres it on the fine grid.
+
+- New particle: add its bitmap to `PARTICLE_ART` and a `case` in `drawParticle`. New bubble picture: add it to `BUBBLE_ICONS` (up to 16 x 12 fine pixels, so it fits the bubble and the dream cloud).
+- Keep them bold and simple: whole shapes in two or three colours, strokes at least two fine pixels thick, and leave two fine pixels between separate parts or their outlines run together.
+- Check them with `tests/symbol_sheet.py` (and `night`).
+
 ### Things that move: draw them through spriteFX
 
 ```js

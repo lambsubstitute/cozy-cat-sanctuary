@@ -1837,6 +1837,7 @@
         }
 
         const particles = [];
+        let particleSerial = 0;             // counts particles, so each can sway or tint its own way
         const weatherParticles = [];
         const fireParticles = [];
         const stars = [];
@@ -1883,6 +1884,7 @@
                 vx: type === 'alert' ? 0 : (Math.random() - 0.5) * (type === 'dust' ? 0.5 : type === 'steam' ? 0.12 : 0.35),
                 vy: falls ? -0.6 : type === 'alert' ? -0.15 : type === 'dust' ? -0.1 : type === 'steam' ? -0.16 : -0.32 - Math.random() * 0.15,
                 age: 0,
+                s: particleSerial++,
                 maxAge: type === 'zzz' || type === 'note' ? 95 : type === 'alert' ? 45 : type === 'dust' ? 20 : type === 'steam' ? 55 : 65,
                 color: customColor
             });
@@ -9247,107 +9249,598 @@
         }
 
         // ------------------------------------------------------------------
-        // SPEECH BUBBLES: a little pixel picture of what a cat is on about
+        // SYMBOLS: the little pictures that float up over the cats (hearts, Zs, sparkles, stars,
+        // "!"s and music notes) and the pictures in their speech and dream bubbles. Each is a
+        // bitmap of fine pixels (half a room pixel each), finished once with light along its top
+        // and left edges, shade along its bottom and right ones and a fine outline, then kept
+        // and copied in wherever it's needed.
         // ------------------------------------------------------------------
-        const BUBBLE_ICONS = {
-            fish:  { c: { o: '#f59e0b', e: '#1e140f' }, rows: ['.ooo...', 'oeooo.o', 'oooooo.', 'ooooo.o', '.ooo...'] },
-            drop:  { c: { o: '#3b82f6', h: '#bfdbfe' }, rows: ['...o...', '..ooo..', '.ohooo.', '.ooooo.', '..ooo..'] },
-            heart: { c: { o: '#f43f5e' }, rows: ['.oo.oo.', 'ooooooo', '.ooooo.', '..ooo..', '...o...'] },
-            bird:  { c: { o: '#7a5535', r: '#e2572b', e: '#111827', b: '#3f2a14' }, rows: ['....oo.', '...ooeb', 'oooorr.', '.ooorr.', '...b.b.'] },
-            box:   { c: { o: '#c8955a', d: '#5a3a1f', t: '#eadcbc' }, rows: ['o.....o', '.odddo.', 'ooooooo', 'ooototo', 'ooooooo'] },
-            what:  { c: { o: '#1e140f' }, rows: ['..ooo..', '.....o.', '...oo..', '.......', '...o...'] },
-            cross: { c: { o: '#dc2626' }, rows: ['.o...o.', 'oo...oo', '.......', 'oo...oo', '.o...o.'] },
-            note:  { c: { o: '#7c3aed' }, rows: ['...oo..', '...o.o.', '...o...', '.ooo...', '.oo....'] },
-            mouse: { c: { o: '#9ca3af', p: '#f9a8d4', e: '#111827' }, rows: ['..p....', '.oooo..', 'oeoooo.', '.oooooo', '.....p.'] },
-            dot:   { c: { o: '#ef4444', h: '#fca5a5' }, rows: ['...h...', '..ooo..', '.hoooh.', '..ooo..', '...h...'] },
-            yarn:  { c: { o: '#e11d48', d: '#9f1239' }, rows: ['.ooo...', 'odoodo.', 'ooddoo.', '.ooo.o.', '.....oo'] },
-            squirrel: { c: { o: '#9a948d', t: '#b9b2a9', e: '#111827', b: '#ebe6de' }, rows: ['tt.....', 'tt..oo.', 't..ooeo', '.toobb.', '..oo.o.'] },
-            leaf:  { c: { o: '#65a30d', d: '#3f6212' }, rows: ['....oo.', '..oooo.', '.ooodo.', '.odoo..', 'd......'] },
-            feather: { c: { o: '#f472b6', d: '#be185d', s: '#94a3b8' }, rows: ['....ooo', '...oodo', '..odoo.', '.oo....', 's......'] },
-            bang:  { c: { o: '#fde047', r: '#f97316' }, rows: ['o..o..o', '.r.o.r.', 'oor.roo', '.r.o.r.', 'o..o..o'] },
-            storm: { c: { o: '#94a3b8', y: '#facc15' }, rows: ['.ooo...', 'ooooo..', 'oooooo.', '..y....', '.y.....'] },
-            ufo:   { c: { o: '#9ca3af', d: '#a5f3fc', g: '#4ade80', l: '#facc15' }, rows: ['..ddd..', '..dgd..', 'ooooooo', '.l.l.l.', '.......'] },
-            fox:   { c: { o: '#c2410c', w: '#f5efe6', e: '#111827', d: '#7c2d12' }, rows: ['d.....d', 'ooooooo', 'oeoooeo', '.wwoww.', '..www..'] },
-            moth:  { c: { o: '#cbb994', w: '#ede5d3' }, rows: ['w.....w', 'ww.o.ww', 'wwwowww', '.w.o.w.', '.......'] }
-        };
-
-        // A friend's face, in their own colours, for dreams about them
-        function catFaceIcon(cat) {
-            const p = cat.pal;
-            return { c: { o: p.base, d: p.dark, e: p.eyes, n: p.nose, w: cat.isTuxedo ? p.belly : p.base },
-                     rows: ['d.....d', 'ooooooo', 'oeoooeo', 'oowfwoo'.replace('f', 'n'), '.ooooo.'] };
+        const SYMBOL_ART = new Map();
+        function symbolCached(key, make) {
+            let cv = SYMBOL_ART.get(key);
+            if (!cv) { cv = make(); SYMBOL_ART.set(key, cv); }
+            return cv;
         }
-
-        function drawIcon(ic, x, y) {
-            ic.rows.forEach((row, r) => {
-                for (let i = 0; i < row.length; i++) {
-                    const col = ic.c[row[i]];
-                    if (col) pxRect(ctx, x + i, y + r, 1, 1, col);
-                }
+        // rows: one character per fine pixel, looked up in pal (anything else is left clear).
+        // opt: ink (the outline's colour; without it, a deep shade of whatever it's next to),
+        // outline (that shade), light and dark (the edge shading), flat (characters left
+        // unshaded: eyes, glints), late (characters painted after the outline, unoutlined: glows)
+        function symbolArt(key, rows, pal, opt = {}) {
+            return symbolCached(key, () => {
+                const { ink = null, outline = -0.8, light = 0.35, dark = -0.28, flat = '', late = '' } = opt;
+                const fw = Math.max(...rows.map(r => r.length)) + 2, fh = rows.length + 2;
+                const P = painter(fw / RES, fh / RES), keep = new Uint8Array(fw * fh);
+                rows.forEach((row, j) => {
+                    for (let i = 0; i < row.length; i++) {
+                        const ch = row[i];
+                        if (!pal[ch] || late.includes(ch)) continue;
+                        P.fset(i + 1, j + 1, pal[ch]);
+                        if (flat.includes(ch)) keep[(j + 1) * fw + i + 1] = 1;
+                    }
+                });
+                symbolFinish(P, keep, ink, outline, light, dark);
+                rows.forEach((row, j) => {
+                    for (let i = 0; i < row.length; i++) if (late.includes(row[i]) && pal[row[i]]) P.fset(i + 1, j + 1, pal[row[i]]);
+                });
+                return P.toCanvas();
             });
         }
+        // Light where a fine pixel's top or left edge is open, shade where its bottom or right
+        // one is (a stroke one pixel thin is left alone), then the outline round the lot
+        function symbolFinish(P, keep, ink, outline = -0.8, light = 0.35, dark = -0.28) {
+            const { fw, fh } = P, on = P.fhas, marks = [];
+            for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+                if (!on(x, y) || (keep && keep[y * fw + x])) continue;
+                const s = (on(x, y - 1) ? 0 : 1) - (on(x, y + 1) ? 0 : 1) + 0.6 * ((on(x - 1, y) ? 0 : 1) - (on(x + 1, y) ? 0 : 1));
+                if (s > 0.5) marks.push([x, y, light]);
+                else if (s < -0.5) marks.push([x, y, dark]);
+            }
+            if (light || dark) marks.forEach(([x, y, a]) => P.fshade(x, y, a));
+            if (!ink) { P.outline(outline); return; }
+            const ring = [];
+            for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++)
+                if (!on(x, y) && (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1))) ring.push([x, y]);
+            ring.forEach(([x, y]) => P.fset(x, y, ink));
+        }
+        // Copy a symbol in, centred on (cx, cy), on the fine grid
+        function drawSymbol(cv, cx, cy) {
+            blit(ctx, cv, Math.round((cx - cv.width / (2 * RES)) * RES) / RES, Math.round((cy - cv.height / (2 * RES)) * RES) / RES);
+        }
 
-        // A dream: a little cloud of a thought, joined to the sleepy head by a trail of bubbles
+        // ---- The ones that float up ----
+        const PARTICLE_ART = {
+            heart: [[
+                '.ooo...ooo.',
+                'owwoo.ooooo',
+                'owooooooooo',
+                'ooooooooooo',
+                'ooooooooooo',
+                '.ooooooooo.',
+                '..ooooooo..',
+                '...ooooo...',
+                '....ooo....',
+                '.....o.....'
+            ], { o: '#fb7185', w: '#ffe4e8' }, { flat: 'w' }],
+            heartPop: [[
+                '.oo.oo.',
+                'owooooo',
+                'ooooooo',
+                '.ooooo.',
+                '..ooo..',
+                '...o...'
+            ], { o: '#fb7185', w: '#ffe4e8' }, { flat: 'w' }],
+            zzz: [[
+                'oooooooo',
+                'oooooooo',
+                '.....oo.',
+                '....oo..',
+                '...oo...',
+                '..oo....',
+                '.oo.....',
+                'oooooooo',
+                'oooooooo'
+            ], { o: '#fff1b8' }, { ink: '#4c3f6b', dark: -0.2 }],
+            zzzSmall: [[
+                'oooooo',
+                'oooooo',
+                '...oo.',
+                '..oo..',
+                'oooooo',
+                'oooooo'
+            ], { o: '#fff1b8' }, { ink: '#4c3f6b', dark: -0.2 }],
+            sparkle: [[
+                '....o....',
+                '....o....',
+                '....l....',
+                '...lwl...',
+                'oolwwwloo',
+                '...lwl...',
+                '....l....',
+                '....o....',
+                '....o....'
+            ], { o: '#fde047', l: '#fef9c3', w: '#ffffff' }, { ink: '#b45309', flat: 'lw' }],
+            sparkleSmall: [[
+                '..o..',
+                '..l..',
+                'olwlo',
+                '..l..',
+                '..o..'
+            ], { o: '#fde047', l: '#fef9c3', w: '#ffffff' }, { ink: '#b45309', flat: 'lw' }],
+            star: [[
+                '.....o.....',
+                '....ooo....',
+                '....owo....',
+                'ooooooooooo',
+                '.ooooooooo.',
+                '..ooooooo..',
+                '..ooooooo..',
+                '.oooo.oooo.',
+                '.ooo...ooo.',
+                '.o.......o.'
+            ], { o: '#fbbf24', w: '#fff7d6' }, { flat: 'w', outline: -0.75 }],
+            alert: [[
+                '.oo.',
+                'oooo',
+                'oooo',
+                'oooo',
+                'oooo',
+                '.oo.',
+                '.oo.',
+                '....',
+                '.oo.',
+                '.oo.'
+            ], { o: '#fde047' }, { ink: '#1e140f', light: 0.5, dark: -0.35 }],
+            note: [[
+                '...oo..',
+                '...ooo.',
+                '...o.oo',
+                '...o..o',
+                '...o...',
+                '...o...',
+                '.ooo...',
+                'oooo...',
+                'oooo...',
+                '.oo....'
+            ]],
+            notes: [[
+                '...oooooo',
+                '...oooooo',
+                '...o....o',
+                '...o....o',
+                '...o....o',
+                '.ooo..ooo',
+                'oooo.oooo',
+                'oooo.oooo',
+                '.oo...oo.'
+            ]]
+        };
+        const NOTE_COLOURS = ['#fde68a', '#f9a8d4', '#c4b5fd'];
+        function particleArt(name, col) {
+            const [rows, pal, opt] = PARTICLE_ART[name];
+            return col ? symbolArt(name + col, rows, { o: col }, { outline: -0.78 }) : symbolArt(name, rows, pal, opt);
+        }
+
+        // Draw one floating particle (and move it). Hearts and Zs sway a little as they rise, and
+        // fade away at the end; sparkles twinkle; hearts and Zs start small.
+        function drawParticle(p) {
+            const px = Math.round(p.x), py = Math.round(p.y), t = p.age / p.maxAge, left = p.maxAge - p.age;
+            switch (p.type) {
+                case 'heart': {
+                    ctx.globalAlpha = clamp(left / 12, 0, 1);
+                    drawSymbol(particleArt(p.age < 5 ? 'heartPop' : 'heart'), p.x + 0.5 + Math.sin(p.age * 0.12 + p.s) * 0.8, p.y + 0.5);
+                    break;
+                }
+                case 'zzz': {
+                    ctx.globalAlpha = clamp(left / 20, 0, 1);
+                    drawSymbol(particleArt(t < 0.35 ? 'zzzSmall' : 'zzz'), p.x + 2 + Math.sin(p.age * 0.09 + p.s) * 1.2, p.y + 2);
+                    break;
+                }
+                case 'sparkle': {
+                    const big = t > 0.15 && t < 0.7 && Math.floor(p.age / 5) % 3 !== 2;
+                    drawSymbol(particleArt(big ? 'sparkle' : 'sparkleSmall'), px + 0.5, py + 0.5);
+                    break;
+                }
+                case 'star': {
+                    ctx.globalAlpha = clamp(left / 12, 0, 1);
+                    drawSymbol(particleArt('star'), px + 0.5, py + 0.5);
+                    break;
+                }
+                case 'alert':
+                    drawSymbol(particleArt('alert'), px + 0.5, py + 2.5 + (p.age < 3 ? 1 : 0));
+                    break;
+                case 'note': {
+                    ctx.globalAlpha = clamp(1.6 * (1 - t), 0, 1);
+                    drawSymbol(particleArt(p.s % 2 ? 'notes' : 'note', NOTE_COLOURS[p.s % 3]), p.x + 2 + Math.sin(p.age * 0.1 + p.s) * 0.8, p.y + 2.5);
+                    break;
+                }
+                case 'crumb':
+                    p.vy += 0.08;
+                    pxRect(ctx, px, py, 1, 1, '#d97706');
+                    hd(ctx, px, py, 0.5, 0.5, '#fbbf24');
+                    hd(ctx, px + 0.5, py + 0.5, 0.5, 0.5, '#92400e');
+                    break;
+                case 'splash':
+                    p.vy += 0.08;
+                    pxRect(ctx, px, py, 1, 1, p.color || '#7dd3fc');
+                    hd(ctx, px, py, 0.5, 0.5, 'rgba(255, 255, 255, 0.75)');
+                    break;
+                case 'fluff':
+                    p.vy += 0.06;
+                    pxRect(ctx, px, py, 1, 1, p.color || '#d6bc98');
+                    hd(ctx, px + 0.5, py + 0.5, 0.5, 0.5, 'rgba(255, 255, 255, 0.35)');
+                    break;
+                case 'dust': {
+                    ctx.fillStyle = `rgba(214, 196, 170, ${0.55 * (1 - t)})`;
+                    ctx.fillRect(px, py, p.age < 8 ? 2 : 3, 1);
+                    break;
+                }
+                case 'steam': {
+                    // a wisp curling up from a hot mug of tea
+                    ctx.fillStyle = `rgba(235, 228, 215, ${0.45 * (1 - t)})`;
+                    const sx = Math.round((px + Math.sin(p.age * 0.15) * 1.2) * RES) / RES;
+                    ctx.fillRect(sx, py, 0.5, 2);
+                    ctx.fillRect(sx + (Math.cos(p.age * 0.15) > 0 ? 0.5 : -0.5), py + 0.5, 0.5, 1);
+                    break;
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // ------------------------------------------------------------------
+        // SPEECH BUBBLES: a little pixel picture of what a cat is on about
+        // ------------------------------------------------------------------
+        // Each picture is drawn on the fine grid, up to 16 x 12 fine pixels, and finished like the
+        // symbols above (rows, palette, options)
+        const BUBBLE_ICONS = {
+            fish: [[
+                '.....ttt........',
+                '..ooooooo.....tt',
+                '.ooooooooo...ttt',
+                'ooweodoooootttt.',
+                'ooeedoooooottt..',
+                'doooodoooooottt.',
+                'ooooodooooootttt',
+                '.ooooooooo...ttt',
+                '..ooooooo.....tt'
+            ], { o: '#fb8a24', t: '#fbbf24', d: '#d4610f', e: '#1e140f', w: '#ffffff' }, { flat: 'ew' }],
+            drop: [[
+                '....oo....',
+                '....oo....',
+                '...oooo...',
+                '...oooo...',
+                '..oooooo..',
+                '.oloooooo.',
+                '.owoooooo.',
+                'owoooooooo',
+                'oloooooooo',
+                'oooooooooo',
+                '.oooooooo.',
+                '..oooooo..'
+            ], { o: '#3b82f6', l: '#93c5fd', w: '#ffffff' }, { flat: 'lw' }],
+            heart: [[
+                '..ooo...ooo..',
+                '.owwoo.ooooo.',
+                'owwoooooooooo',
+                'owooooooooooo',
+                'ooooooooooooo',
+                '.ooooooooooo.',
+                '..ooooooooo..',
+                '...ooooooo...',
+                '....ooooo....',
+                '.....ooo.....',
+                '......o......'
+            ], { o: '#f43f5e', w: '#ffd7de' }, { flat: 'w' }],
+            bird: [[
+                '..........ooo...',
+                '.........ooooo..',
+                'dd.......oooeob.',
+                'ddd..ooooooooobb',
+                '.ddoooooooorrr..',
+                '..okkkkkoorrr...',
+                '.ookkkkkkrrrr...',
+                '..ookkkkorrr....',
+                '...ooooorrr.....',
+                '.....oooo.......',
+                '......b..b......'
+            ], { o: '#8b5e3c', k: '#6a4329', d: '#6b4529', r: '#e2572b', e: '#111827', b: '#3f2a14' }, { flat: 'e' }],
+            box: [[
+                'f..............f',
+                'ff............ff',
+                'fff..........fff',
+                '.ffddddddddddff.',
+                '.oooooottoooooo.',
+                '.oooooottoooooo.',
+                '.oooooottoooooo.',
+                '.oooooooooooooo.',
+                '.oooooooooooooo.',
+                '.oooooooooooooo.',
+                '.oooooooooooooo.'
+            ], { o: '#c8955a', f: '#ddb07a', d: '#5a3a1f', t: '#eadcbc' }, { flat: 'd' }],
+            what: [[
+                '..oooo..',
+                '.oooooo.',
+                'oo....oo',
+                'oo....oo',
+                '......oo',
+                '.....oo.',
+                '....oo..',
+                '...oo...',
+                '...oo...',
+                '........',
+                '...oo...',
+                '...oo...'
+            ], { o: '#3b6fd8' }],
+            cross: [[
+                'oo........oo',
+                'ooo......ooo',
+                '.ooo....ooo.',
+                '..ooo..ooo..',
+                '...oooooo...',
+                '....oooo....',
+                '....oooo....',
+                '...oooooo...',
+                '..ooo..ooo..',
+                '.ooo....ooo.',
+                'ooo......ooo',
+                'oo........oo'
+            ], { o: '#e23b3b' }],
+            note: [[
+                '.....oooooooo',
+                '.....oooooooo',
+                '.....o......o',
+                '.....o......o',
+                '.....o......o',
+                '.....o......o',
+                '.....o......o',
+                '..oooo...oooo',
+                '.owooo..owooo',
+                '.oooo...oooo.',
+                '..oo.....oo..'
+            ], { o: '#7c3aed', w: '#c4b5fd' }, { flat: 'w' }],
+            mouse: [[
+                '....ooo.........',
+                '....oppo........',
+                '....oppooo......',
+                '...ooooooooo....',
+                '..oeooooooooo..t',
+                'poooooooooooo.tt',
+                '.oooooooooooott.',
+                '...ooooooooott..',
+                '.....ooooo......'
+            ], { o: '#a3a9b4', p: '#f9a8d4', t: '#f9a8d4', e: '#111827' }, { flat: 'e' }],
+            dot: [[
+                '....hh....',
+                '....hh....',
+                '...oooo...',
+                '..oowloo..',
+                'hhoolloohh',
+                'hhoooooohh',
+                '..oooooo..',
+                '...oooo...',
+                '....hh....',
+                '....hh....'
+            ], { o: '#ef4444', l: '#fca5a5', w: '#ffffff', h: '#fca5a5' }, { flat: 'lw', late: 'h' }],
+            yarn: [[
+                '....odooo.....',
+                '..oodoooood...',
+                '.oodooodoood..',
+                '.odooododooo..',
+                '.dooodooodoo..',
+                'dooodooooodoo.',
+                '.oodooodoood..',
+                '.odooododooo..',
+                '.dooodooodoo..',
+                '..oodooooodo..',
+                '....ooodo...oo',
+                '.............o'
+            ], { o: '#e11d48', d: '#9f1239' }],
+            squirrel: [[
+                '..ttttt.........',
+                '.ttttttt...o....',
+                'tttTTTttt..ooo..',
+                'ttTttttTt.oooeo.',
+                'ttTtttt...ooooon',
+                'ttTtttt...ooooo.',
+                '.ttTttt.oooooo..',
+                '..ttTttoooobbo..',
+                '...ttttoooobbo..',
+                '....tttoooobbo..',
+                '.....ttoooobb...',
+                '.......oo..oo...'
+            ], { o: '#9a948d', t: '#b9b2a9', T: '#8a837b', e: '#111827', n: '#3a3532', b: '#ebe6de' }, { flat: 'en' }],
+            leaf: [[
+                '..........o...',
+                '.......oooooo.',
+                '......ooooodo.',
+                '.....ooooodoo.',
+                '....ooooodoo..',
+                '...ooooodooo..',
+                '...oooddooo...',
+                '..ooodoooo....',
+                '..oodoooo.....',
+                '..odoooo......',
+                '..d...........',
+                '.d............'
+            ], { o: '#65a30d', d: '#3f6212' }],
+            feather: [[
+                '..........oooo.',
+                '........oooood.',
+                '.......ooooodo.',
+                '......ooooodo..',
+                '.....ooooodoo..',
+                '.....oooddoo...',
+                '....ooodooo....',
+                '....oodooo.....',
+                '....odoo.......',
+                '...sd..........',
+                '.ss............',
+                's..............'
+            ], { o: '#f472b6', d: '#be185d', s: '#94a3b8' }],
+            bang: [[
+                '......oo.......',
+                '..o...ooo.ooo..',
+                '..oooooooooo...',
+                '..oooooyoooo...',
+                '...ooyyyyyoo...',
+                '..oooyyyyyoooo.',
+                'ooooyyyyyyyoooo',
+                '.ooooyyyyyooo..',
+                '...ooyyyyyoo...',
+                '...ooooyooooo..',
+                '...oooooooooo..',
+                '..ooo.ooo...o..',
+                '.......oo......'
+            ], { o: '#fb923c', y: '#fde047' }],
+            storm: [[
+                '......oooo......',
+                '.....oooooo.....',
+                '...oooooooooo...',
+                '..oooooooooooo..',
+                '.oooooooooooooo.',
+                '.oooooooooooooo.',
+                '..ooooooooooooo.',
+                '...ooooooyyooo..',
+                '.........yy.....',
+                '..b.....yy......',
+                '..b....yyyy..b..',
+                '........yy...b..',
+                '.......yy.......'
+            ], { o: '#8a95a8', y: '#facc15', b: '#60a5fa' }],
+            ufo: [[
+                '......dddd......',
+                '.....ddggdd.....',
+                '....ddkggkdd....',
+                '...ooodggdooo...',
+                'oooooooooooooooo',
+                'oooooooooooooooo',
+                '.oolooloolooloo.'
+            ], { o: '#9ca3af', d: '#a5f3fc', g: '#4ade80', k: '#14532d', l: '#facc15' }, { flat: 'kl' }],
+            fox: [[
+                'o.............o',
+                'oo...........oo',
+                'oko.........oko',
+                'okko.......okko',
+                'ooooooooooooooo',
+                'ooooooooooooooo',
+                'ooeeoooooooeeoo',
+                'wwoeoooooooeoww',
+                '.wwwooooooowww.',
+                '..wwwwooowwww..',
+                '...wwwwnwwww...',
+                '.....wwwww.....'
+            ], { o: '#e0631c', k: '#5b230c', w: '#f5efe6', e: '#111827', n: '#1e140f' }, { flat: 'en' }],
+            moth: [[
+                '.....a....a.....',
+                '.wwww.a..a.wwww.',
+                'wwwwwwwbbwwwwwww',
+                'wwwwwwwbbwwwwwww',
+                '.wwwdwwbbwwdwww.',
+                '.wwwwwwbbwwwwww.',
+                '...hhhhbbhhhh...',
+                '...hhhhbbhhhh...',
+                '...hhhhbbhhhh...',
+                '....hh.bb.hh....'
+            ], { w: '#e3d3ae', h: '#cdb88f', b: '#6b5a3e', a: '#6b5a3e', d: '#8a6d4a' }, { flat: 'd' }]
+        };
+        function bubbleIconArt(name) {
+            const ic = BUBBLE_ICONS[name];
+            return ic ? symbolArt('icon:' + name, ...ic) : null;
+        }
+
+        // A friend's face, in their own colours, for dreams about them
+        const FACE_ROWS = [
+            '.d...........d.',
+            '.dd.........dd.',
+            '.dpd.......dpd.',
+            '.dppooosoooppd.',
+            '.oooosososoooo.',
+            'ooooooooooooooo',
+            'ooeeoooooooeeoo',
+            'ooeEoooooooEeoo',
+            'oooooomnmoooooo',
+            '.ooooommmooooo.',
+            '..ooooooooooo..'
+        ];
+        const FACE_ROWS_TUX = FACE_ROWS.slice(0, 8).concat(['ooooommnmmooooo', '.oooommmmmoooo.', '..ooommmmmooo..']);
+        function catFaceIcon(cat) {
+            const p = cat.pal, tux = !!cat.isTuxedo;
+            const rows = tux ? FACE_ROWS_TUX.map((r, j) => j === 3 || j === 4 ? r.replace(/s/g, 'o') : r) : FACE_ROWS;
+            return symbolArt('face:' + [p.base, p.dark, p.stripe, p.eyes, p.nose, p.belly, tux].join(), rows,
+                { o: p.base, d: p.dark, s: p.stripe, p: blendColors(p.nose, p.dark, 0.35), e: p.eyes, E: '#111827', n: p.nose, m: p.belly },
+                { flat: 'eEn' });
+        }
+
+        // The speech bubble, drawn once: a rounded box of paper with a fine dark outline, shaded
+        // underneath and down its right side, a glint at the top left, and a little tail pointing
+        // down at the cat. A smaller, empty one for the moment it pops up.
+        function speechBubbleArt(small) {
+            return symbolCached(small ? 'bubble:pop' : 'bubble', () => {
+                const bw = small ? 14 : 24, bh = small ? 11 : 20, corner = small ? [2, 1] : [3, 1, 1], tail = small ? [4, 2] : [6, 4, 2];
+                const P = painter((bw + 2) / RES, (bh + tail.length + 2) / RES);
+                const paper = '#fdf6e3', under = '#eadfc4';
+                for (let j = 0; j < bh; j++) {
+                    const inset = corner[Math.min(j, bh - 1 - j)] || 0;
+                    for (let i = inset; i < bw - inset; i++) P.fset(1 + i, 1 + j, paper);
+                }
+                tail.forEach((tw, k) => { for (let i = 0; i < tw; i++) P.fset(1 + (bw - tw) / 2 + i, 1 + bh + k, paper); });
+                bubbleShade(P, under);
+                if (!small) [[3, 2], [4, 2], [5, 2], [2, 3], [2, 4]].forEach(([x, y]) => P.fset(x, y, '#ffffff'));
+                return P.toCanvas();
+            });
+        }
+        // Shade the undersides (two fine pixels deep) and right side of a bubble or cloud, then outline it in ink
+        function bubbleShade(P, under, ink = '#1e140f') {
+            const on = P.fhas, marks = [];
+            for (let y = 0; y < P.fh; y++) for (let x = 0; x < P.fw; x++)
+                if (on(x, y) && (!on(x, y + 1) || !on(x, y + 2) || !on(x + 1, y))) marks.push([x, y]);
+            marks.forEach(([x, y]) => P.fset(x, y, under));
+            symbolFinish(P, null, ink, 0, 0, 0);
+        }
+        // (x, y) is the tip of the bubble's tail, just above the cat's head
+        function drawBubble(x, y, icon, age = 99) {
+            if (age < 3) { blit(ctx, speechBubbleArt(true), x - 3.5, y - 7.5); return; }     // popping up
+            const lift = age < 6 ? 1 : 0;                                                 // ...overshooting a touch
+            blit(ctx, speechBubbleArt(false), x - 6, y - 13.5 - lift);
+            const ic = bubbleIconArt(icon);
+            if (ic) drawSymbol(ic, x + 0.5, y - 8 - lift);
+        }
+
+        // A dream: a puffy cloud of a thought, joined to the sleepy head by a trail of bubbles
+        const DREAM_CLOUD = [[18, 13.5, 12, 7]].concat([0.6, 0, 0.3, 0, 0, 0.4, 0, 0.2, 0].map((j, k) => {
+            const a = 2 * Math.PI * k / 9;
+            return [18 + 12 * Math.cos(a), 13.5 + 7 * Math.sin(a), 4.4 + j, 4.4 + j];
+        }));
+        function dreamArt(part, nightmare) {
+            return symbolCached('dream:' + part + (nightmare ? ':bad' : ''), () => {
+                const ink = nightmare ? '#2a2238' : '#4c3f6b', paper = nightmare ? '#cfcbe0' : '#f5f3ff';
+                const shapes = part === 'cloud' ? DREAM_CLOUD : part === 'big' ? [[3.5, 3.5, 2.6, 2.6]] : [[2, 2, 1.2, 1.2]];
+                const fw = part === 'cloud' ? 37 : part === 'big' ? 7 : 4, fh = part === 'cloud' ? 28 : fw;
+                const P = painter(fw / RES, fh / RES);
+                P.fine(0, 0, fw / RES, fh / RES, (fx, fy) => shapes.some(([cx, cy, rx, ry]) => ((fx + 0.5 - cx) / rx) ** 2 + ((fy + 0.5 - cy) / ry) ** 2 <= 1) ? paper : null);
+                bubbleShade(P, shade(paper, -0.12), ink);
+                if (part !== 'small') P.fset(part === 'cloud' ? 12 : 2, part === 'cloud' ? 5 : 2, '#ffffff');
+                return P.toCanvas();
+            });
+        }
         function drawDreamBubble(cat) {
             const d = cat.dream;
             const age = globalTick - d.start, left = d.until - globalTick;
             const a = cat.bubbleAnchor();
             const side = cat.surface === 'treeHouse' ? 1 : -cat.facing || 1;   // drifts up from the back of the head
             const ax = Math.round(a.x), ay = Math.round(a.y) + 4;
-            const ink = d.nightmare ? '#2a2238' : '#4c3f6b', paper = d.nightmare ? '#cfcbe0' : '#f5f3ff';
-            ctx.globalAlpha = clamp(left / 20, 0, 1) * 0.95;
-            pxRect(ctx, ax + side, ay - 3, 1, 1, paper);                         // the trail of bubbles
-            if (age > 12) {
-                pxRect(ctx, ax + side * 3 - 1, ay - 7, 3, 3, ink);
-                pxRect(ctx, ax + side * 3, ay - 6, 1, 1, paper);
-            }
+            ctx.globalAlpha = clamp(left / 20, 0, 1);
+            drawSymbol(dreamArt('small', d.nightmare), ax + side + 0.5, ay - 2.5);    // the trail of bubbles
+            if (age > 12) drawSymbol(dreamArt('big', d.nightmare), ax + side * 3 + 0.5, ay - 6.5);
             if (age > 24) {
                 const jit = d.nightmare && Math.floor(age / 4) % 2 ? 1 : 0;
-                const x = clamp(ax + side * 9, 8, W - 9) + jit, y = Math.max(17, ay - 9);
-                pxRect(ctx, x - 5, y - 15, 11, 1, ink);                           // a puffy, scalloped cloud
-                pxRect(ctx, x - 6, y - 14, 13, 7, ink);
-                pxRect(ctx, x - 5, y - 7, 11, 1, ink);
-                pxRect(ctx, x - 4, y - 16, 3, 1, ink);
-                pxRect(ctx, x + 1, y - 16, 4, 1, ink);
-                pxRect(ctx, x - 7, y - 13, 1, 4, ink);
-                pxRect(ctx, x + 7, y - 12, 1, 4, ink);
-                pxRect(ctx, x - 4, y - 6, 3, 1, ink);
-                pxRect(ctx, x + 1, y - 6, 3, 1, ink);
-                pxRect(ctx, x - 5, y - 14, 11, 7, paper);
-                pxRect(ctx, x - 4, y - 15, 3, 1, paper);
-                pxRect(ctx, x + 1, y - 15, 4, 1, paper);
-                pxRect(ctx, x - 6, y - 12, 1, 2, paper);
-                pxRect(ctx, x + 6, y - 11, 1, 2, paper);
-                pxRect(ctx, x - 4, y - 7, 3, 1, paper);
-                pxRect(ctx, x + 1, y - 7, 3, 1, paper);
-                const ic = d.kind === 'friend' && d.friend ? catFaceIcon(d.friend) : BUBBLE_ICONS[d.icon];
+                const x = clamp(ax + side * 10, 9, W - 10) + jit, y = Math.max(19, ay - 9);
+                drawSymbol(dreamArt('cloud', d.nightmare), x + 0.5, y - 11.5);
+                const ic = d.kind === 'friend' && d.friend ? catFaceIcon(d.friend) : bubbleIconArt(d.icon);
                 // chases scamper back and forth across the dream
                 const run = d.chase ? (Math.floor(age / 10) % 4 === 1 ? 1 : Math.floor(age / 10) % 4 === 3 ? -1 : 0) : 0;
-                if (ic) drawIcon(ic, x - 3 + run, y - 13 + (d.kind === 'love' && Math.floor(age / 20) % 2 ? -1 : 0));
+                if (ic) drawSymbol(ic, x + 0.5 + run, y - 11.5 + (d.kind === 'love' && Math.floor(age / 20) % 2 ? -1 : 0));
             }
             ctx.globalAlpha = 1;
-        }
-
-        // (x, y) is the tip of the bubble's tail, just above the cat's head
-        function drawBubble(x, y, icon) {
-            const ink = '#1e140f', paper = '#fdf6e3';
-            pxRect(ctx, x - 4, y - 12, 9, 9, ink);               // outline with rounded corners
-            pxRect(ctx, x - 5, y - 11, 11, 7, ink);
-            pxRect(ctx, x - 4, y - 11, 9, 7, paper);
-            pxRect(ctx, x - 4, y - 5, 9, 1, '#eadfc4');          // shaded underneath, a glint at the top left
-            pxRect(ctx, x + 4, y - 10, 1, 5, '#eadfc4');
-            pxRect(ctx, x - 4, y - 11, 2, 1, '#ffffff');
-            pxRect(ctx, x - 1, y - 3, 3, 1, ink);                // little tail
-            pxRect(ctx, x, y - 4, 1, 1, paper);
-            pxRect(ctx, x, y - 2, 1, 1, ink);
-            const ic = BUBBLE_ICONS[icon];
-            if (!ic) return;
-            ic.rows.forEach((row, r) => {
-                for (let i = 0; i < row.length; i++) {
-                    const col = ic.c[row[i]];
-                    if (col) pxRect(ctx, x - 3 + i, y - 10 + r, 1, 1, col);
-                }
-            });
         }
 
         // ------------------------------------------------------------------
@@ -9560,8 +10053,7 @@
                 if (!b) return;
                 if (globalTick > b.until) { c.bubble = null; return; }
                 const a = c.bubbleAnchor();
-                const pop = globalTick - b.born < 4 ? 2 : 0;     // pops up into place
-                drawBubble(clamp(Math.round(a.x), 6, W - 7), Math.max(14, Math.round(a.y) + pop), b.icon);
+                drawBubble(clamp(Math.round(a.x), 6, W - 7), Math.max(15, Math.round(a.y)), b.icon, globalTick - b.born);
             });
         }
 
@@ -11999,72 +12491,13 @@
 
             ctx.restore();
 
-            // Render active pixel particles (Hearts, Zzz, Sparkles, Crumbs)
+            // Move and draw the particles (hearts, Zs, sparkles, crumbs...: see SYMBOLS)
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
                 p.x += p.vx;
                 p.y += p.vy;
                 p.age++;
-
-                const px = Math.round(p.x);
-                const py = Math.round(p.y);
-
-                if (p.type === 'heart') {
-                    // 5x5 Pixel Heart
-                    const hc = '#fb7185';
-                    pxRect(ctx, px - 2, py - 2, 2, 2, hc);
-                    pxRect(ctx, px + 1, py - 2, 2, 2, hc);
-                    pxRect(ctx, px - 3, py - 1, 7, 2, hc);
-                    pxRect(ctx, px - 2, py + 1, 5, 1, hc);
-                    pxRect(ctx, px - 1, py + 2, 3, 1, hc);
-                    pxRect(ctx, px, py + 3, 1, 1, hc);
-                } else if (p.type === 'zzz') {
-                    // 4x4 Pixel 'Z'
-                    const zc = '#fef08a';
-                    pxRect(ctx, px, py, 4, 1, zc);
-                    pxRect(ctx, px + 2, py + 1, 1, 1, zc);
-                    pxRect(ctx, px + 1, py + 2, 1, 1, zc);
-                    pxRect(ctx, px, py + 3, 4, 1, zc);
-                } else if (p.type === 'sparkle') {
-                    pxRect(ctx, px, py - 1, 1, 3, '#fde047');
-                    pxRect(ctx, px - 1, py, 3, 1, '#fde047');
-                } else if (p.type === 'crumb') {
-                    p.vy += 0.08;
-                    pxRect(ctx, px, py, 1, 1, '#d97706');
-                } else if (p.type === 'splash') {
-                    p.vy += 0.08;
-                    pxRect(ctx, px, py, 1, 1, p.color || '#7dd3fc');
-                } else if (p.type === 'alert') {
-                    // "!" - a cat has spotted something
-                    pxRect(ctx, px - 1, py - 1, 3, 7, '#1e140f');
-                    pxRect(ctx, px, py, 1, 3, '#fde047');
-                    pxRect(ctx, px, py + 4, 1, 1, '#fde047');
-                } else if (p.type === 'dust') {
-                    const a = 1 - p.age / p.maxAge;
-                    ctx.fillStyle = `rgba(214, 196, 170, ${0.55 * a})`;
-                    ctx.fillRect(px, py, p.age < 8 ? 2 : 3, 1);
-                } else if (p.type === 'star') {
-                    const sc = '#fbbf24';
-                    pxRect(ctx, px, py - 2, 1, 5, sc);
-                    pxRect(ctx, px - 2, py, 5, 1, sc);
-                    pxRect(ctx, px, py, 1, 1, '#fff7d6');
-                } else if (p.type === 'note') {
-                    // a little pixel quaver drifting up from the record player
-                    const a = 1 - p.age / p.maxAge;
-                    ctx.fillStyle = `rgba(253, 230, 138, ${0.9 * a})`;
-                    ctx.fillRect(px, py + 3, 2, 2);
-                    ctx.fillRect(px + 1, py, 1, 4);
-                    ctx.fillRect(px + 2, py, 1, 1);
-                    ctx.fillRect(px + 3, py + 1, 1, 1);
-                } else if (p.type === 'fluff') {
-                    p.vy += 0.06;
-                    pxRect(ctx, px, py, 1, 1, p.color || '#d6bc98');
-                } else if (p.type === 'steam') {
-                    // a wisp curling up from a hot mug of tea
-                    const a = 1 - p.age / p.maxAge;
-                    ctx.fillStyle = `rgba(235, 228, 215, ${0.45 * a})`;
-                    ctx.fillRect(px + Math.round(Math.sin(p.age * 0.15)), py, 1, 2);
-                }
+                drawParticle(p);
 
                 if (p.age >= p.maxAge) {
                     particles.splice(i, 1);
