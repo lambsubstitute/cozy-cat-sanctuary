@@ -35,7 +35,7 @@ The whole game is `index.html`: the HTML at the top, then one script holding the
 
 The house rules for the artwork (the style, the tools, the cat palette, the "strobe rule" for patterns on moving sprites, and how to check new art before it ships) are written up for Claude as a skill in [.claude/skills/cozy-cat-art/SKILL.md](.claude/skills/cozy-cat-art/SKILL.md), which Claude Code picks up whenever it works in this folder.
 
-Libraries are loaded from CDNs: [Tailwind CSS](https://tailwindcss.com/) (play CDN) for the page styling, and the [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) and [VT323](https://fonts.google.com/specimen/VT323) fonts from Google Fonts.
+Libraries are loaded from CDNs: [Tailwind CSS](https://tailwindcss.com/) (play CDN) for the page styling, and the [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) and [VT323](https://fonts.google.com/specimen/VT323) fonts from Google Fonts. Visits to the live site are counted with [GoatCounter](https://www.goatcounter.com/), which uses no cookies and collects no personal data; it ignores copies opened from your own computer.
 
 ## Tests
 

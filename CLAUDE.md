@@ -5,7 +5,7 @@ A cosy pixel-art living room where the player's own cats live their lives. It's 
 ## The shape of it
 
 - **Everything is in `index.html`**: the page at the top, then one big script. There's no build step, no bundler, no package.json, and no image or sound files. Keep it that way: open the file in a browser and it runs.
-- The only outside resources are the Tailwind play CDN and two Google fonts (Press Start 2P, VT323), plus Open-Meteo for the optional real weather. Don't add others.
+- The only outside resources are the Tailwind play CDN and two Google fonts (Press Start 2P, VT323), plus Open-Meteo for the optional real weather and GoatCounter (`gc.zgo.at`) for visitor counts, at the very end of the page. Don't add others.
 - The script is split into commented sections with capitalised banners (TIME OF DAY, ROOM NAVIGATION, THE CAT TUNNEL, 16-BIT ART, MEMORY...). Find your way by those, not by line numbers, which drift:
 
   ```sh
