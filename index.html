@@ -398,7 +398,7 @@
     <div id="namePanel" class="hidden fixed inset-0 z-40 items-center justify-center bg-black/60 p-4">
         <div class="pixel-panel rounded-lg w-full max-w-md flex flex-col gap-3 p-4">
             <div class="flex items-center gap-3">
-                <canvas id="namePortrait" width="40" height="36" class="w-16 h-14 shrink-0 pixel-card rounded p-0.5" style="image-rendering: pixelated;"></canvas>
+                <canvas id="namePortrait" width="80" height="72" class="w-16 h-14 shrink-0 pixel-card rounded p-0.5" style="image-rendering: pixelated;"></canvas>
                 <div class="min-w-0">
                     <div class="font-pixel-title text-xs text-amber-300 tracking-wider mb-1">🐾 A NEW ARRIVAL!</div>
                     <div id="nameBlurb" class="text-lg text-amber-100 leading-tight"></div>
@@ -474,9 +474,9 @@
         window.addEventListener('resize', sizeView);    // (also when the window moves to a screen with a different pixel density)
         sizeView();
         // Set up a canvas that holds RES pixels per room pixel, so it can be drawn on in room units
-        function hiResCtx(cv) {
+        function hiResCtx(cv, res = RES) {
             const g = cv.getContext('2d');
-            g.setTransform(RES, 0, 0, RES, 0, 0);
+            g.setTransform(res, 0, 0, res, 0, 0);
             g.imageSmoothingEnabled = false;
             return g;
         }
@@ -5596,7 +5596,7 @@
         function fineDabs(c, dabs) {
             let g = c, K = 1, tx = 0, ty = 0, sx = 1;
             if (c === smallCtx) { g = c.real; K = c.K; tx = c.tx; ty = c.ty; sx = c.sx; }
-            const real = g === fxTee ? fxHiG : g, S = RES * K, rows = new Map();
+            const real = g === fxTee ? fxHiG : g, G = real === fxHiG ? FX_RES : RES, S = G * K, rows = new Map();   // (in a sprite, on its own finer grid, so they come out round)
             for (const [x, y, r, col] of dabs) {
                 const X = (tx + sx * x) * S, Y = (ty + y) * S, Rr = r * S, R2 = Rr * Rr, fn = typeof col === 'function';
                 for (let fy = Math.floor(Y - Rr); fy < Y + Rr; fy++) {
@@ -5614,10 +5614,10 @@
                     const col = row.get(xs[i]);
                     let j = i + 1;
                     while (j < xs.length && xs[j] === xs[j - 1] + 1 && row.get(xs[j]) === col) j++;
-                    const x = xs[i] / RES, y = fy / RES, w = (j - i) / RES;
+                    const x = xs[i] / G, y = fy / G, w = (j - i) / G;
                     real.fillStyle = col;
-                    real.fillRect(x, y, w, 1 / RES);
-                    if (real === fxHiG) fxMark(x, y, w, 1 / RES);
+                    real.fillRect(x, y, w, 1 / G);
+                    if (real === fxHiG) fxMark(x, y, w, 1 / G);
                     i = j;
                 }
             });
@@ -8038,7 +8038,7 @@
                 <div class="flex items-start justify-between gap-2">
                     <div class="flex items-center gap-2 min-w-0 flex-1">
                         <div class="relative shrink-0">
-                            <canvas id="portrait-${i}" width="40" height="36" class="w-10 h-9 pixel-card rounded p-0.5" style="image-rendering: pixelated;"></canvas>
+                            <canvas id="portrait-${i}" width="80" height="72" class="w-10 h-9 pixel-card rounded p-0.5" style="image-rendering: pixelated;"></canvas>
                             <span id="cat-face-${i}" class="absolute -bottom-1.5 -right-1.5 text-sm leading-none" title="Mood">😺</span>
                         </div>
                         <div class="min-w-0">
@@ -8257,12 +8257,12 @@
                 <div class="flex items-center justify-between gap-2 mb-3">
                     <div class="font-pixel-title text-[11px] sm:text-xs text-amber-300 tracking-wider">CAT ${creator.idx + 1} OF ${n}</div>
                     <div class="flex gap-1.5">
-                        ${creator.looks.map((l, i) => `<button data-goto="${i}" title="${esc(l.name)}" aria-label="Cat ${i + 1}: ${esc(l.name)}" class="rounded p-0.5 border-2 ${i === creator.idx ? 'border-amber-300' : 'border-transparent'} outline-none focus-visible:ring-2 focus-visible:ring-amber-300"><canvas data-face="${i}" width="40" height="36" class="w-8 h-7 pixel-card rounded" style="image-rendering: pixelated;"></canvas></button>`).join('')}
+                        ${creator.looks.map((l, i) => `<button data-goto="${i}" title="${esc(l.name)}" aria-label="Cat ${i + 1}: ${esc(l.name)}" class="rounded p-0.5 border-2 ${i === creator.idx ? 'border-amber-300' : 'border-transparent'} outline-none focus-visible:ring-2 focus-visible:ring-amber-300"><canvas data-face="${i}" width="80" height="72" class="w-8 h-7 pixel-card rounded" style="image-rendering: pixelated;"></canvas></button>`).join('')}
                     </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] gap-4">
                     <div class="flex flex-col items-center gap-2">
-                        <canvas id="creatorPreview" width="104" height="72" class="w-full max-w-[15rem] pixel-card rounded" style="image-rendering: pixelated; aspect-ratio: 52 / 36;"></canvas>
+                        <canvas id="creatorPreview" width="208" height="144" class="w-full max-w-[15rem] pixel-card rounded" style="image-rendering: pixelated; aspect-ratio: 52 / 36;"></canvas>
                         <div id="creatorBreed" class="text-lg text-amber-200 text-center leading-tight">${esc(lookBreed(L))}</div>
                         <button data-random="1" class="pixel-btn rounded px-3 py-1 text-base text-amber-100 focus-visible:ring-2 focus-visible:ring-amber-300 outline-none">🎲 Surprise me</button>
                     </div>
@@ -8372,7 +8372,8 @@
                 pc.facing = Math.random() < 0.5 ? 1 : -1;
             }
             pc.animTick++;
-            const g = hiResCtx(cv);
+            if (cv.width !== 52 * FX_RES) { cv.width = 52 * FX_RES; cv.height = 36 * FX_RES; }   // (52 x 36 room pixels, at a sprite's full resolution)
+            const g = hiResCtx(cv, FX_RES);
             blit(g, creatorBackdrop(), 0, 0);                             // a little corner of the room
             drawPixelCat(g, pc, 26, 31);
         }
@@ -10993,13 +10994,18 @@
         // whatever was drawn, every pose of every cat (kittens too) gets it.
         //
         // Each sprite is drawn onto two canvases at once (through fxTee). One holds a pixel per
-        // room pixel and leaves out the fine details (see hd): it's blown up to double size the
-        // way the classic pixel-art scalers do it (EPX, also known as Scale2x), which rounds off
-        // the steps in every diagonal and curve. The other is full resolution, details and all;
-        // wherever it differs from the plain blown-up picture it wins, and so does anything drawn
-        // only at full resolution (eyes, noses, whiskers, and the smooth tails and legs): those are
-        // also marked on a third canvas, the mask.
-        const FX_BOX = 96, FX_OX = 48, FX_OY = 72, FB = FX_BOX * RES;
+        // room pixel and leaves out the fine details (see hd): it's blown up to FX_RES times the
+        // size the way the classic pixel-art scalers do it (EPX, also known as Scale2x, done twice
+        // over for four times: Scale4x), which rounds off the steps in every diagonal and curve.
+        // The other is full resolution, details and all; wherever it differs from the plain
+        // blown-up picture it wins, and so does anything drawn only at full resolution (eyes,
+        // noses, whiskers, and the smooth tails and legs): those are also marked on a third
+        // canvas, the mask. A finished sprite holds FX_RES pixels per room pixel: on a computer as
+        // many as the room does, for smooth curves and fine fur; on a phone or tablet, half that, as
+        // it always was (every sprite is shaded afresh each frame, and four times the pixels costs
+        // a phone more than its smaller screen shows).
+        const FX_RES = window.matchMedia && matchMedia('(pointer: coarse)').matches ? RES : ROOM_RES;
+        const FX_BOX = 96, FX_OX = 48, FX_OY = 72, FB = FX_BOX * FX_RES;
         function fxCanvas(n) {
             const cv = document.createElement('canvas');
             cv.width = cv.height = n;
@@ -11014,6 +11020,9 @@
         const fxSolid = new Uint8Array(FB * FB);
         const fxEdge = new Uint32Array(FB * FB);
         const fxDetail = new Uint8Array(FB * FB);
+        const fxRing = new Uint8Array(FB * FB);              // the outline: 1 for its first ring, 2 for any more
+        const fxUp = new Uint16Array(FB * FB), fxDn = new Uint16Array(FB * FB), fxLf = new Uint16Array(FB * FB), fxRt = new Uint16Array(FB * FB);   // how far to the shape's edge each way
+        const fxE2 = new Uint32Array((FX_BOX * 2 + 4) * (FX_BOX * 2 + 4));   // the low-res drawing, doubled once
         // Some browsers guard against fingerprinting (Safari, Brave and Firefox can all do this) by
         // adding faint random noise to whatever a page reads back from a canvas: a level or two on a
         // few pixels, different every time. spriteFX reads each sprite back and compares colours
@@ -11171,7 +11180,7 @@
                 const p = y * F + x, c = img[p];
                 if ((c !== base && c !== stripe) || fxDetail[p]) continue;
                 if (pat === 'solid') { img[p] = base; continue; }
-                const u = x / 11, v = y / 9;
+                const u = x / (11 * FX_RES / 2), v = y / (9 * FX_RES / 2);     // (the same patches whatever the resolution)
                 if (pat === 'calico') {                                         // white, with patches of ginger and black
                     const a = valueNoise(u, v, 40 + cat.id), b = valueNoise(u + 17, v + 9, 50 + cat.id);
                     img[p] = a > 0.6 ? stripe : b > 0.62 ? dark : base;
@@ -11191,8 +11200,8 @@
             return { dx: q(x), dy: q(y) };
         }
         // draw(g) paints the sprite in room coordinates; (wx, wy) is roughly where it stands.
-        // opt.dx and opt.dy nudge the finished sprite by part of a room pixel (a fine pixel or two),
-        // so things can glide half a pixel at a time.
+        // opt.dx and opt.dy nudge the finished sprite by part of a room pixel (see glide), so things
+        // can glide a quarter of a pixel at a time.
         function spriteFX(target, wx, wy, draw, opt = {}) {
             if (fxBusy) { draw(target); return; }
             const ox = Math.round(wx) - FX_OX, oy = Math.round(wy) - FX_OY;
@@ -11208,7 +11217,7 @@
             fxInks.clear(); fxSnap.clear();
             if (FX_NOISY && opt.coat) ['base', 'stripe', 'dark'].forEach(k => fxInk(opt.coat.pal[k]));   // the coat's own colours always paint as themselves
             try {
-                [[fxLoG, 1], [fxHiG, RES], [fxMaskG, RES]].forEach(([g, s]) => {
+                [[fxLoG, 1], [fxHiG, FX_RES], [fxMaskG, FX_RES]].forEach(([g, s]) => {
                     g.setTransform(1, 0, 0, 1, 0, 0);
                     g.globalAlpha = 1;
                     g.clearRect(0, 0, g.canvas.width, g.canvas.height);
@@ -11232,39 +11241,55 @@
                 if ((lo[p] >>> 24) > (FX_NOISY ? 6 : 0)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
             }
             if (fxReach[2] >= 0) {
-                x0 = Math.min(x0, Math.floor(fxReach[0] / RES)); y0 = Math.min(y0, Math.floor(fxReach[1] / RES));
-                x1 = Math.max(x1, Math.ceil(fxReach[2] / RES)); y1 = Math.max(y1, Math.ceil(fxReach[3] / RES));
+                x0 = Math.min(x0, Math.floor(fxReach[0] / FX_RES)); y0 = Math.min(y0, Math.floor(fxReach[1] / FX_RES));
+                x1 = Math.max(x1, Math.ceil(fxReach[2] / FX_RES)); y1 = Math.max(y1, Math.ceil(fxReach[3] / FX_RES));
             }
             if (x1 < 0) { if (opt.cache) fxCache.set(opt.cache, { cv: null }); return; }
             // a margin for the outline and any details poking out past the basic shape
             x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2); x1 = Math.min(B - 1, x1 + 2); y1 = Math.min(B - 1, y1 + 2);
-            const R = RES, fx0 = x0 * R, fy0 = y0 * R, fw = (x1 - x0 + 1) * R, fh = (y1 - y0 + 1) * R;
+            const R = FX_RES, fx0 = x0 * R, fy0 = y0 * R, fw = (x1 - x0 + 1) * R, fh = (y1 - y0 + 1) * R;
             const hi = new Uint32Array(fxHiG.getImageData(fx0, fy0, fw, fh).data.buffer);
             const mask = fxReach[2] >= 0 ? new Uint32Array(fxMaskG.getImageData(fx0, fy0, fw, fh).data.buffer) : null;
-            // snap away any read-back noise (see fxClean): the low-res drawing one pixel wider all round,
-            // because the blow-up looks at neighbours
+            // snap away any read-back noise (see fxClean): the low-res drawing two pixels wider all round,
+            // because the blow-up looks at neighbours (and, doubling twice, at theirs)
             if (FX_NOISY) {
-                fxClean(lo, B, Math.max(0, x0 - 1), Math.max(0, y0 - 1), Math.min(B - 1, x1 + 1), Math.min(B - 1, y1 + 1));
+                fxClean(lo, B, Math.max(0, x0 - 2), Math.max(0, y0 - 2), Math.min(B - 1, x1 + 2), Math.min(B - 1, y1 + 2));
                 fxClean(hi, fw, 0, 0, fw - 1, fh - 1);
             }
-            // 1. blow the low-res drawing up (EPX), and lay the full-resolution details over it
-            const F = FB, img = fxEdge, epx = opt.round !== false && R === 2;
+            // 1. blow the low-res drawing up (EPX, twice over for four times), and lay the
+            //    full-resolution details over it
+            const F = FB, img = fxEdge, epx = opt.round !== false;
             const L = (x, y) => (x < 0 || y < 0 || x >= B || y >= B) ? 0 : lo[y * B + x];
+            // EPX: which of a pixel's four corners (top left, top right, bottom left, bottom right)
+            // take a neighbour's colour, from the pixel P and its neighbours above, right, left, below
+            const corner = (P, A, Bn, C, D, i, j) => !epx ? P
+                : j ? (i ? (Bn === D && Bn !== A && D !== C ? D : P) : (D === C && D !== Bn && C !== A ? C : P))
+                    : (i ? (A === Bn && A !== C && Bn !== D ? Bn : P) : (C === A && C !== D && A !== Bn ? A : P));
+            // doubled once, with a pixel's margin all round (doubling again looks at neighbours)
+            const gx0 = x0 - 1, gy0 = y0 - 1, GW = (x1 - x0 + 3) * 2, GH = (y1 - y0 + 3) * 2;
+            for (let y = gy0; y <= y1 + 1; y++) for (let x = gx0; x <= x1 + 1; x++) {
+                const P = L(x, y), A = L(x, y - 1), Bn = L(x + 1, y), C = L(x - 1, y), D = L(x, y + 1);
+                const q = 2 * (y - gy0) * GW + 2 * (x - gx0);
+                fxE2[q] = corner(P, A, Bn, C, D, 0, 0); fxE2[q + 1] = corner(P, A, Bn, C, D, 1, 0);
+                fxE2[q + GW] = corner(P, A, Bn, C, D, 0, 1); fxE2[q + GW + 1] = corner(P, A, Bn, C, D, 1, 1);
+            }
+            const k2 = R / 2;                                                // fine pixels across a doubled pixel
+            // every fine pixel: the doubled (or, doubled again, quadrupled) picture...
+            for (let Y = 2; Y < GH - 2; Y++) for (let X = 2; X < GW - 2; X++) {
+                const g = Y * GW + X, Q = fxE2[g], p = (2 * gy0 + Y) * k2 * F + (2 * gx0 + X) * k2;
+                if (k2 === 1) { img[p] = Q; continue; }
+                const A = fxE2[g - GW], Bn = fxE2[g + 1], C = fxE2[g - 1], D = fxE2[g + GW];
+                img[p] = corner(Q, A, Bn, C, D, 0, 0); img[p + 1] = corner(Q, A, Bn, C, D, 1, 0);
+                img[p + F] = corner(Q, A, Bn, C, D, 0, 1); img[p + F + 1] = corner(Q, A, Bn, C, D, 1, 1);
+            }
+            // ...with the fine details on top (on the full-resolution drawing, fine details are
+            // whatever doesn't match the low-res one)
             for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
                 const P = lo[y * B + x];
-                let e1 = P, e2 = P, e3 = P, e4 = P;
-                if (epx) {
-                    const A = L(x, y - 1), Bn = L(x + 1, y), C = L(x - 1, y), D = L(x, y + 1);
-                    if (C === A && C !== D && A !== Bn) e1 = A;
-                    if (A === Bn && A !== C && Bn !== D) e2 = Bn;
-                    if (D === C && D !== Bn && C !== A) e3 = C;
-                    if (Bn === D && Bn !== A && D !== C) e4 = D;
-                }
                 const hx = (x - x0) * R, hy = (y - y0) * R, q = hy * fw + hx, p = (y * R) * F + x * R;
-                // (on the full-resolution drawing, fine details are whatever doesn't match the low-res one)
                 for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
                     const h = hi[q + j * fw + i], k = p + j * F + i, d = h !== P || (mask && (mask[q + j * fw + i] >>> 24) > 127);
-                    img[k] = d ? h : R === 2 ? (j ? (i ? e4 : e3) : (i ? e2 : e1)) : P;
+                    if (d) img[k] = h;
                     fxDetail[k] = d ? 1 : 0;
                 }
             }
@@ -11300,27 +11325,35 @@
                     if (n && coat(x, y)) img[y * F + x] = n;
                 }
             }
-            // 2. shade it, and outline it, a fine pixel at a time
+            // 2. shade it, and outline it, a fine pixel at a time (the bands of light and shade, and
+            //    the outline, are half a room pixel wide each, whatever the resolution)
             for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
                 const p = y * F + x;
                 fxSolid[p] = (img[p] >>> 24) >= 250 ? 1 : 0;
+                fxRing[p] = 0;
             }
             const S = (x, y) => x >= X0 && y >= Y0 && x <= X1 && y <= Y1 && fxSolid[y * F + x];
+            // how far each pixel is from the edge of the shape, up, down, left and right (counting
+            // itself: 1 is right on the edge), in one sweep each way
+            for (let y = Y0; y <= Y1; y++) for (let x = X0, p = y * F + X0; x <= X1; x++, p++) {
+                fxUp[p] = fxSolid[p] ? (y > Y0 ? fxUp[p - F] : 0) + 1 : 0;
+                fxLf[p] = fxSolid[p] ? (x > X0 ? fxLf[p - 1] : 0) + 1 : 0;
+            }
+            for (let y = Y1; y >= Y0; y--) for (let x = X1, p = y * F + X1; x >= X0; x--, p--) {
+                fxDn[p] = fxSolid[p] ? (y < Y1 ? fxDn[p + F] : 0) + 1 : 0;
+                fxRt[p] = fxSolid[p] ? (x < X1 ? fxRt[p + 1] : 0) + 1 : 0;
+            }
             const out = fxImg.data;
             const lit = opt.light ?? 0.3, dim = opt.dim ?? 0.34, line = opt.outline ?? -0.8;
-            const rgb = [0, 0, 0];
+            const rgb = [0, 0, 0], hk = R / 2;
             for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
                 const p = y * F + x, i = p * 4, c = img[p];
                 if (fxSolid[p]) {
-                    let amt = 0;
-                    if (!S(x, y - 1)) amt += lit;
-                    else if (!S(x, y - 2)) amt += lit * 0.5;
-                    else if (!S(x - 1, y)) amt += lit * 0.35;
-                    if (!S(x, y + 1)) amt -= dim;
-                    else if (!S(x, y + 2)) amt -= dim * 0.6;
-                    else if (!S(x, y + 3)) amt -= dim * 0.25;
-                    else if (!S(x + 1, y)) amt -= dim * 0.3;
-                    else if (!S(x + 2, y)) amt -= dim * 0.12;
+                    let amt = 0, e;
+                    if ((e = fxUp[p]) <= 2 * hk) amt += e <= hk ? lit : lit * 0.5;
+                    else if (fxLf[p] <= hk) amt += lit * 0.35;
+                    if ((e = fxDn[p]) <= 3 * hk) amt -= e <= hk ? dim : e <= 2 * hk ? dim * 0.6 : dim * 0.25;
+                    else if ((e = fxRt[p]) <= 2 * hk) amt -= e <= hk ? dim * 0.3 : dim * 0.12;
                     if (amt) {
                         rgb[0] = c & 255; rgb[1] = (c >>> 8) & 255; rgb[2] = (c >>> 16) & 255;
                         const s = shadeRgb(rgb, clamp(amt, -1, 1));
@@ -11339,8 +11372,20 @@
                     rgb[0] = n & 255; rgb[1] = (n >>> 8) & 255; rgb[2] = (n >>> 16) & 255;
                     const s = shadeRgb(rgb, line);
                     out[i] = s[0]; out[i + 1] = s[1]; out[i + 2] = s[2]; out[i + 3] = 255;
+                    fxRing[p] = 1;
                 } else fxPix[p] = c;                        // soft things (shadows) pass straight through
             }
+            // ...and thicken the outline to half a room pixel, each new ring the colour of the one inside it
+            for (let ring = 2; ring <= hk; ring++)
+                for (let y = Y0; y <= Y1; y++) for (let x = X0; x <= X1; x++) {
+                    const p = y * F + x;
+                    if (fxSolid[p] || fxRing[p] || !line) continue;
+                    const j = x > X0 && fxRing[p - 1] === ring - 1 ? p - 1 : x < X1 && fxRing[p + 1] === ring - 1 ? p + 1
+                            : y > Y0 && fxRing[p - F] === ring - 1 ? p - F : y < Y1 && fxRing[p + F] === ring - 1 ? p + F : -1;
+                    if (j < 0) continue;
+                    fxPix[p] = fxPix[j];
+                    fxRing[p] = ring;
+                }
             fxOutG.putImageData(fxImg, 0, 0, fx0, fy0, fw, fh);
             target.drawImage(fxOutG.canvas, fx0, fy0, fw, fh, nx + fx0 / R, ny + fy0 / R, fw / R, fh / R);
             if (opt.cache) {
@@ -12863,7 +12908,9 @@
 
         // The little portraits in the cards, shaded and outlined like the cats in the room
         function drawCatFaceFX(pCtx, cat) {
-            pCtx.setTransform(RES, 0, 0, RES, 0, 0);                  // (the canvas is 20 x 18 room pixels, at full resolution)
+            const cv = pCtx.canvas;                                   // (the canvas is 20 x 18 room pixels, at a sprite's full resolution)
+            if (cv.width !== 20 * FX_RES) { cv.width = 20 * FX_RES; cv.height = 18 * FX_RES; }
+            pCtx.setTransform(FX_RES, 0, 0, FX_RES, 0, 0);
             pCtx.imageSmoothingEnabled = false;
             pCtx.clearRect(0, 0, 20, 18);
             spriteFX(pCtx, FX_OX, FX_OY, g => drawCatFace(g, cat), { light: 0.25, outline: -0.85, fur: true });

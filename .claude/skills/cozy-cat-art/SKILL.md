@@ -62,7 +62,7 @@ The little pictures that float over the cats, and the speech and dream bubbles w
 spriteFX(target, wx, wy, g => drawThing(g), { /* options */ });
 ```
 
-`draw(g)` paints in room coordinates. spriteFX draws it twice at once: a low-res copy that's blown up with EPX/Scale2x (rounding every diagonal), and a full-resolution copy whose fine details win. Then it shades every edge, adds fur where coat colours meet and outlines the lot, so every pose gets the same finish without being shaded by hand.
+`draw(g)` paints in room coordinates. spriteFX draws it twice at once: a low-res copy that's blown up with EPX (rounding every diagonal), and a full-resolution copy whose fine details win. A finished sprite holds `FX_RES` pixels per room pixel: `ROOM_RES` (4, EPX twice over) on a computer, `RES` (2) on a touch screen, chosen at start-up for speed. Write sprite code for either: `hd` details snap to half pixels at both, `fineDabs` draws on the sprite's own grid (so tails and legs come out round at 4), and the light and shade bands and the outline are half a room pixel wide at both. Check art on a computer (the tests' default) and, with `tests/touch_test.py`, on a touch screen. Then it shades every edge, adds fur where coat colours meet and outlines the lot, so every pose gets the same finish without being shaded by hand.
 
 Options: `outline` (cats use `-0.9`, default `-0.8`), `light` (0.3), `dim` (0.34), `fur: true`, `coat: cat` (turns stripes into the cat's real markings), `round: false` (no EPX), `dx`/`dy` (glide by part of a pixel: `glide(x, y)` works them out for something drawn at whole pixels, to a quarter pixel), `cache: 'key'` (draw once and reuse: use it for anything that looks the same every frame).
 

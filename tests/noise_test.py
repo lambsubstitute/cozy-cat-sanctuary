@@ -64,7 +64,7 @@ with sync_playwright() as p:
             d = pg.evaluate("roomCanvas.toDataURL('image/png')")
             im = Image.open(io.BytesIO(base64.b64decode(d.split(",")[1]))).convert("RGB")
             r = im.width // 320
-            body = im.crop(((120 - 6) * r, (170 - 22) * r, (120 + 14) * r, (170 + 2) * r))   # the cat, without its tail behind
+            body = im.crop(((120 - 5) * r, (170 - 22) * r, (120 + 14) * r, (170 + 2) * r))   # the cat, without its tail behind (which sways)
             if prev is not None and inhale == prev_in:
                 n = sum(1 for px in ImageChops.difference(body, prev).getdata() if max(px) > 6)
                 worst = max(worst, n)
