@@ -64,7 +64,7 @@ spriteFX(target, wx, wy, g => drawThing(g), { /* options */ });
 
 `draw(g)` paints in room coordinates. spriteFX draws it twice at once: a low-res copy that's blown up with EPX/Scale2x (rounding every diagonal), and a full-resolution copy whose fine details win. Then it shades every edge, adds fur where coat colours meet and outlines the lot, so every pose gets the same finish without being shaded by hand.
 
-Options: `outline` (cats use `-0.9`, default `-0.8`), `light` (0.3), `dim` (0.34), `fur: true`, `coat: cat` (turns stripes into the cat's real markings), `round: false` (no EPX), `dx`/`dy` (glide by part of a pixel), `cache: 'key'` (draw once and reuse: use it for anything that looks the same every frame).
+Options: `outline` (cats use `-0.9`, default `-0.8`), `light` (0.3), `dim` (0.34), `fur: true`, `coat: cat` (turns stripes into the cat's real markings), `round: false` (no EPX), `dx`/`dy` (glide by part of a pixel: `glide(x, y)` works them out for something drawn at whole pixels, to a quarter pixel), `cache: 'key'` (draw once and reuse: use it for anything that looks the same every frame).
 
 - **A sprite must fit its scratch box**: within 48 room pixels left or right of `(wx, wy)`, 72 above and 24 below (`FX_BOX`, `FX_OX`, `FX_OY`). Anything outside is silently cut off.
 - **spriteFX costs a `getImageData` per sprite per frame**: keep sprites compact, and cache still ones.

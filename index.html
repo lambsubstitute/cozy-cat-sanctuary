@@ -5821,10 +5821,12 @@
             if (cat.surface === 'tunnel') return;               // drawn by the tunnel (a bulge, eyes, a tail...)
             if (cat.surface === 'underSofa' || cat.surface === 'treeHouse' || cat.surface === 'box') drawPixelCatSprite(c, cat, drawX, drawY);
             else {
-                // glide half a pixel at a time, and bob along with the stride when walking
+                // glide a quarter of a pixel at a time (the room canvas is that fine), rise and fall
+                // through a leap just as smoothly (the sprite lifts by whole pixels, see drawCatBody,
+                // and the glide makes up the rest), and bob along with the stride when walking
                 cat.fineBob = cat.isMoving && !(cat.lastStep >= 1.15) && cat.getPose() === 'walking' ? catGait(cat).bob : 0;
-                const dx = Math.round(drawX * RES) / RES - Math.round(drawX), dy = Math.round(drawY * RES) / RES - Math.round(drawY) - cat.fineBob;
-                spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9, fur: true, coat: cat, dx, dy });
+                const z = cat.z || 0, { dx, dy } = glide(drawX, drawY - z);
+                spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9, fur: true, coat: cat, dx, dy: dy + Math.round(drawY - z) - Math.round(drawY) + Math.round(z) - cat.fineBob });
             }
         }
         function drawPixelCatSprite(c, cat, drawX, drawY) {
@@ -11182,6 +11184,12 @@
         // Sprites that don't change from frame to frame (the treasures on the mantelpiece, say)
         // can pass opt.cache, a key naming exactly how they look: they're shaded once and reused
         const fxCache = new Map();
+        // Something drawn at whole pixels at (x, y) can glide smoothly by passing spriteFX this: the
+        // part of a pixel that rounding left out, to the nearest pixel of the room canvas
+        function glide(x, y) {
+            const q = v => Math.round(v * ROOM_RES) / ROOM_RES - Math.round(v);
+            return { dx: q(x), dy: q(y) };
+        }
         // draw(g) paints the sprite in room coordinates; (wx, wy) is roughly where it stands.
         // opt.dx and opt.dy nudge the finished sprite by part of a room pixel (a fine pixel or two),
         // so things can glide half a pixel at a time.
@@ -12611,7 +12619,7 @@
                 if (!knockableUp(k) || !knockablePresent(k)) return;
                 const still = k.state === 'home' && !(k.wobble > 0) && k.x === Math.round(k.x);
                 const key = still && ['k', k.id, k.y, fireplaceLit, Math.floor(globalTick / 8) % 2].join();
-                spriteFX(ctx, k.x, k.y, () => drawKnockable(k), still ? { cache: key } : {});
+                spriteFX(ctx, k.x, k.y, () => drawKnockable(k), still ? { cache: key } : glide(k.x, k.y));
                 if (k.id === 'mug' && k.state === 'home') drawSteam(k.x - 1, k.y - 7);
             });
         }
@@ -12741,7 +12749,7 @@
                     else if (b < 0.14 && u + v < 1) hd(ctx, x, y, 0.5, 0.5, yarn.highlight);
                     else hd(ctx, x, y, 0.5, 0.5, yarn.color);
                 }
-            }, { light: 0.25, dim: 0.3, cache: 'yarn' + yarn.color + yarn.highlight });
+            }, { light: 0.25, dim: 0.3, cache: 'yarn' + yarn.color + yarn.highlight, ...glide(yarn.x, yarn.y) });
         }
 
         function drawLightingAndParticles() {
@@ -13460,12 +13468,12 @@
             //    order, so nearer things overlap farther ones
             const drawables = cats.map(cat => ({ y: cat.y, draw: () => drawPixelCat(ctx, cat, cat.x, cat.y) }));
             drawables.push({ y: yarn.y, draw: drawYarnBall });
-            if (mouse.active && mouse.phase !== 'caught') drawables.push({ y: mouse.y, draw: () => spriteFX(ctx, mouse.x, mouse.y, g => drawMouse(g)) });
+            if (mouse.active && mouse.phase !== 'caught') drawables.push({ y: mouse.y, draw: () => spriteFX(ctx, mouse.x, mouse.y, g => drawMouse(g), mouse.phase === 'enter' || mouse.phase === 'emerge' ? {} : glide(mouse.x, mouse.y)) });   // (whole pixels in the hole, so the skirting hides it exactly)
             if (box.active) drawables.push({ y: box.y - 0.01, draw: () => spriteFX(ctx, box.x, box.y, drawBox) });
             if (tunnel.out) drawables.push({ y: TUNNEL.y + 0.9, draw: drawTunnel });
             if (catnip.active) drawables.push({ y: catnip.y - 6, draw: drawCatnip });
-            floorTreats.forEach(t => drawables.push({ y: t.y - 0.5, draw: () => spriteFX(ctx, t.x, t.y, () => drawTreat(t)) }));
-            KNOCKABLES.forEach(k => { if (!knockableUp(k) && knockablePresent(k)) drawables.push({ y: k.fallTo, draw: () => spriteFX(ctx, k.x, k.y, () => drawKnockable(k)) }); });
+            floorTreats.forEach(t => drawables.push({ y: t.y - 0.5, draw: () => spriteFX(ctx, t.x, t.y, () => drawTreat(t), glide(t.x, t.y)) }));
+            KNOCKABLES.forEach(k => { if (!knockableUp(k) && knockablePresent(k)) drawables.push({ y: k.fallTo, draw: () => spriteFX(ctx, k.x, k.y, () => drawKnockable(k), glide(k.x, k.y)) }); });
             drawables.sort((a, b) => a.y - b.y).forEach(d => d.draw());
 
             // 4. Draw warm fireplace/lamp glow & pixel particles, speech bubbles, then the laser dot on top
