@@ -5684,21 +5684,27 @@
 
         // A cat's face seen straight on (in the cat house, in a box, or looking at you).
         // The head is 10 x 8 with its top-left at (hx - 5, hy); ears poke up above.
+        // The head seen straight on, as a shaped bitmap (see catMap) from (hx - 5, hy - 2): ears up
+        // at the corners, a rounded crown between them, tabby markings on the forehead and cheeks,
+        // full cheeks and a rounded chin (the muzzle, M, is white on a tuxedo)
+        const HEAD_FRONT = [
+            'DD......DD',
+            'DDD.BB.DDD',
+            'BBBBSSBBBB',
+            'BSBBSSBBSB',
+            'BSBBBBBBSB',
+            'BBBBBBBBBB',
+            'BBBBMMBBBB',
+            'BBBMMMMBBB',
+            '.BBMMMMBB.',
+            '..BBBBBB..'
+        ];
         function drawFaceHead(c, cat, hx, hy) {
             const pal = cat.pal;
-            pxRect(c, hx - 5, hy, 10, 8, pal.base);
-            pxRect(c, hx - 5, hy - 2, 3, 2, pal.dark);
-            pxRect(c, hx + 2, hy - 2, 3, 2, pal.dark);
+            catMap(c, hx - 5, hy - 2, HEAD_FRONT, catCols(cat));
             pxRect(c, hx - 4, hy - 1, 1, 1, pal.light);
             pxRect(c, hx + 3, hy - 1, 1, 1, pal.light);
-            if (cat.isTuxedo) {
-                pxRect(c, hx - 1, hy, 2, 4, pal.belly);              // white blaze
-                pxRect(c, hx - 2, hy + 4, 4, 4, pal.belly);          // white muzzle
-            } else {
-                pxRect(c, hx - 1, hy, 2, 2, pal.stripe);             // forehead 'M'
-                pxRect(c, hx - 4, hy + 1, 1, 2, pal.stripe);
-                pxRect(c, hx + 3, hy + 1, 1, 2, pal.stripe);
-            }
+            if (cat.isTuxedo) pxRect(c, hx - 1, hy, 2, 4, pal.belly);   // white blaze
             pxRect(c, hx - 1, hy + 5, 2, 1, pal.nose);
             // fine details: pointed ears pink inside, a shaped nose, the mouth and whiskers
             hdClear(c, hx - 4, hy - 2, 2, 0.5); hdClear(c, hx - 3, hy - 1.5, 1, 0.5);
@@ -5807,19 +5813,31 @@
             pxRect(c, -4, -1, 3, 2, pal.paws);
             pxRect(c, 1, -1, 3, 2, pal.paws);
             drawFaceHead(c, cat, 0, hy);
-            // It's dark in there
+            drawFaceEyes(c, cat, 0, hy, houseCatEyesShut(cat), cat.houseLook || 0);
+            c.restore();
+        }
+        function houseCatEyesShut(cat) { return (cat.state === 'house_sleep' && !cat.nav) || (cat.animTick % 110) < 5 || cat.purrTimer > 0; }
+        // It's dark in there: laid over the cat (once it's shaded, so its markings come out right) and
+        // the doorway, with its eyes again on top so they glint. (c is at the cat's feet.)
+        function drawHouseShade(c, cat) {
+            const napping = cat.state === 'house_sleep' && !cat.nav;
+            const hy = -15 + (napping ? 2 + Math.floor(cat.animTick / 34) % 2 : 0);
+            c.save();
+            c.beginPath();
+            c.rect(-6, -17, 12, 18);
+            c.clip();
             c.fillStyle = 'rgba(12, 7, 4, 0.38)';
             c.fillRect(-6, -17, 12, 18);
-            // Eyes on top of the shadow, so they glint
-            const blink = (t % 110) < 5 || cat.purrTimer > 0;
-            drawFaceEyes(c, cat, 0, hy, napping || blink, cat.houseLook || 0);
+            drawFaceEyes(cat.small ? smallCtx.wrap(c, cat.small) : c, cat, 0, hy, houseCatEyesShut(cat), cat.houseLook || 0);
             c.restore();
         }
 
         // Draws any of the 3 cats in their current pose with distinct markings
         function drawPixelCat(c, cat, drawX, drawY) {
             if (cat.surface === 'tunnel') return;               // drawn by the tunnel (a bulge, eyes, a tail...)
-            if (cat.surface === 'underSofa' || cat.surface === 'treeHouse' || cat.surface === 'box') drawPixelCatSprite(c, cat, drawX, drawY);
+            // (eyes glinting in the dark under the sofa or at the back of the cat house are left as
+            // they are, and a cat in the box is drawn by the box)
+            if (cat.surface === 'underSofa' || cat.surface === 'box' || (cat.surface === 'treeHouse' && cat.state === 'hiding' && !cat.nav)) drawPixelCatSprite(c, cat, drawX, drawY);
             else {
                 // glide a quarter of a pixel at a time (the room canvas is that fine), rise and fall
                 // through a leap just as smoothly (the sprite lifts by whole pixels, see drawCatBody,
@@ -5827,6 +5845,7 @@
                 cat.fineBob = cat.isMoving && !(cat.lastStep >= 1.15) && cat.getPose() === 'walking' ? catGait(cat).bob : 0;
                 const z = cat.z || 0, { dx, dy } = glide(drawX, drawY - z);
                 spriteFX(c, drawX, drawY, g => drawPixelCatSprite(g, cat, drawX, drawY), { outline: -0.9, fur: true, coat: cat, dx, dy: dy + Math.round(drawY - z) - Math.round(drawY) + Math.round(z) - cat.fineBob });
+                if (cat.surface === 'treeHouse') { c.save(); c.translate(Math.round(drawX), Math.round(drawY)); drawHouseShade(c, cat); c.restore(); }
             }
         }
         function drawPixelCatSprite(c, cat, drawX, drawY) {
@@ -7149,7 +7168,7 @@
                         pxRect(ctx, s > 0 ? x0 + 6 - kit : x0 - 7 + kit, T.y - 4 - flick, 2, 3, c.pal.base);
                     }
                 });
-            });
+            }, { coat: catsInTunnel().find(c => c.state === 'tunnel_peek') || catsInTunnel()[0] });   // (whoever shows gets their own markings)
         }
         // Two eyes in the dark of an opening, glancing about (and blinking)
         function drawTunnelEyes(c, x, y) {
@@ -13516,7 +13535,7 @@
             const drawables = cats.map(cat => ({ y: cat.y, draw: () => drawPixelCat(ctx, cat, cat.x, cat.y) }));
             drawables.push({ y: yarn.y, draw: drawYarnBall });
             if (mouse.active && mouse.phase !== 'caught') drawables.push({ y: mouse.y, draw: () => spriteFX(ctx, mouse.x, mouse.y, g => drawMouse(g), mouse.phase === 'enter' || mouse.phase === 'emerge' ? {} : glide(mouse.x, mouse.y)) });   // (whole pixels in the hole, so the skirting hides it exactly)
-            if (box.active) drawables.push({ y: box.y - 0.01, draw: () => spriteFX(ctx, box.x, box.y, drawBox) });
+            if (box.active) drawables.push({ y: box.y - 0.01, draw: () => spriteFX(ctx, box.x, box.y, drawBox, { coat: boxOccupant() }) });   // (the cat in it gets its own markings)
             if (tunnel.out) drawables.push({ y: TUNNEL.y + 0.9, draw: drawTunnel });
             if (catnip.active) drawables.push({ y: catnip.y - 6, draw: drawCatnip });
             floorTreats.forEach(t => drawables.push({ y: t.y - 0.5, draw: () => spriteFX(ctx, t.x, t.y, () => drawTreat(t), glide(t.x, t.y)) }));
