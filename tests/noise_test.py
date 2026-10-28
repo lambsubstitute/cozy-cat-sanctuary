@@ -48,7 +48,7 @@ with sync_playwright() as p:
         prev, prev_in, worst = None, None, 0
         for t in range(100, 124):
             inhale = pg.evaluate(FRAME, [t])
-            d = pg.evaluate("document.getElementById('dioramaCanvas').toDataURL('image/png')")
+            d = pg.evaluate("roomCanvas.toDataURL('image/png')")
             im = Image.open(io.BytesIO(base64.b64decode(d.split(",")[1]))).convert("RGB")
             r = im.width // 320
             body = im.crop(((120 - 6) * r, (170 - 22) * r, (120 + 14) * r, (170 + 2) * r))   # the cat, without its tail behind

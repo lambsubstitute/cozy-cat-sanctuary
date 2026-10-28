@@ -30,7 +30,8 @@ Super Nintendo era, drawn at double resolution.
 ## The grid
 
 - The room is **320 x 190 room pixels** (`W`, `H`). Every position, route, hit box and piece of furniture is in room pixels. **Never move furniture or ledges**: the cats' navigation graph (`NAV_EDGES`) and the tests depend on exact positions.
-- The canvas is drawn at **`RES = 2`** (640 x 380), so detail can be half a room pixel across. Positions in art code can be on halves (`x + 0.5`).
+- Art is drawn at **`RES = 2`**, so detail can be half a room pixel across. Positions in art code can be on halves (`x + 0.5`).
+- The room canvas (`roomCanvas`, off screen) is **`ROOM_RES = 4`** (1280 x 760). Anything drawn at `RES` lands on it exactly as before; pieces of the room repainted in more detail use quarter pixels (see below). The page's `#dioramaCanvas` is only an evenly scaled copy made each frame (`presentRoom`), so read pixels from `roomCanvas`.
 - `SNAP` is the grid `pxRect` snaps to: `RES` normally, `1` inside a sprite's low-res pass.
 
 ## Two kinds of art
@@ -45,7 +46,7 @@ The still room is painted once into `roomBackdrop()` (repainted only when the fe
 - Finishing: `outline(amt)`, `smooth()` (rounds off stepped edges, EPX style), `toCanvas()`.
 - `stamp(dst, src, x, y, [right, down, amt, soft])` copies a painted piece into the room with its cast shadow. `blit(ctx, canvas, x, y)` draws a painted canvas at a room position.
 
-Follow the existing `paintWallpaper`, `paintFloor` and furniture painters, and `paintPortrait` for something detailed and procedural. Anything that changes now and then but isn't animated (a portrait, say) is painted once per look and cached by a key.
+Pieces repainted in finer detail are painted at `ROOM_RES`: `roomBackdrop` paints everything else at `RES`, makes a finer copy (`P.finer(ROOM_RES)`) and paints them into that, last. `paintFireplace` is the model: work out fine positions from `P.res` rather than assuming 2 (a `fmap` character is one fine pixel, so a quarter pixel there), give its sub-painters (logs, mantel) the same `res` so `stamp` can copy them, and keep its textures from `hash2`/`valueNoise` in fine coordinates. Move a piece over only when nothing painted after it overlaps it (or paint those over it again). Follow the existing `paintWallpaper`, `paintFloor` and furniture painters, and `paintPortrait` for something detailed and procedural. Anything that changes now and then but isn't animated (a portrait, say) is painted once per look and cached by a key.
 
 ### Symbols: hearts, Zs, sparkles, "!", notes, bubbles
 
@@ -187,7 +188,7 @@ with sync_playwright() as p:
     frames = []
     for k in range(n):
         x = pg.evaluate(FRAME, [pose, k, step, facing])
-        d = pg.evaluate("document.getElementById('dioramaCanvas').toDataURL('image/png')")
+        d = pg.evaluate("roomCanvas.toDataURL('image/png')")
         im = Image.open(io.BytesIO(base64.b64decode(d.split(",")[1]))).convert("RGB")
         r = im.width // 320                                   # canvas pixels per room pixel
         x0 = round((x - 20) * r)                              # follow the cat, to the canvas pixel

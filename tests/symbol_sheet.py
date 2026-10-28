@@ -41,7 +41,7 @@ JS = r"""() => {
     drawDreamBubble(c);
   });
   c.bubbleAnchor = realAnchor; c.dream = null;
-  return document.getElementById('dioramaCanvas').toDataURL('image/png');
+  return roomCanvas.toDataURL('image/png');
 }"""
 with sync_playwright() as p:
     b = p.chromium.launch()

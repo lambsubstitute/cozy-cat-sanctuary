@@ -35,7 +35,7 @@ with sync_playwright() as p:
     for pose in POSES:
         pg.evaluate(JS, pose)
         pg.wait_for_timeout(250)
-        d = pg.evaluate("document.getElementById('dioramaCanvas').toDataURL('image/png')")
+        d = pg.evaluate("roomCanvas.toDataURL('image/png')")
         im = Image.open(io.BytesIO(base64.b64decode(d.split(",")[1]))).convert("RGB")
         r = im.width // 320                     # the canvas holds r pixels per room pixel
         rows.append(im.crop((30 * r, 140 * r, 250 * r, 180 * r)))

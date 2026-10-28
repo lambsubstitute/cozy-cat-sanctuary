@@ -38,7 +38,7 @@ with sync_playwright() as p:
     frames = []
     for k in range(n):
         x = pg.evaluate(FRAME, [pose, k, step, facing])
-        d = pg.evaluate("document.getElementById('dioramaCanvas').toDataURL('image/png')")
+        d = pg.evaluate("roomCanvas.toDataURL('image/png')")
         im = Image.open(io.BytesIO(base64.b64decode(d.split(",")[1]))).convert("RGB")
         r = im.width // 320                                   # canvas pixels per room pixel
         x0 = round((x - 20) * r)                              # follow the cat, to the canvas pixel

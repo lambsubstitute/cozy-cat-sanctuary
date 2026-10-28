@@ -16,7 +16,7 @@ A cosy pixel-art living room where the player's own cats live their lives. It's 
 
 ## Rules that keep it working
 
-- **Room pixels.** The room is 320 x 190 room pixels (`W`, `H`) and every position, route and hit box uses them. The canvas is drawn at `RES = 2`, purely for finer art.
+- **Room pixels.** The room is 320 x 190 room pixels (`W`, `H`) and every position, route and hit box uses them. The art is drawn at `RES = 2`, and the room canvas holds `ROOM_RES = 4` so repainted pieces of the room (the fireplace so far) can use quarter pixels; both are purely for finer art. The game draws into `roomCanvas` off screen; `#dioramaCanvas` on the page is just an evenly scaled copy, so tests read pixels from `roomCanvas`.
 - **Never move furniture, ledges or surfaces.** The cats' routes (`NAV_EDGES` and the surfaces in ROOM NAVIGATION) depend on exact positions, and the simulation test checks every jump against them.
 - **Saves must keep loading.** Progress lives in `localStorage` under `cozyCatSanctuary.v1` (and `cozyCatSanctuary.weather` for the weather setting). If you add to the save, give old saves a sensible default rather than breaking them; `tests/household_persist.py` checks old saves still load.
 - **Phones matter.** There's a touch layout (portrait and landscape). Anything that changes the page around the canvas needs `tests/touch_test.py` and `tests/mobile_shot.py`.

@@ -16,7 +16,7 @@ def handler(route):
         return route.fulfill(status=200, content_type='application/json', body=json.dumps(body), headers={'Access-Control-Allow-Origin': '*'})
     if u.startswith('http'): return route.abort()
     return route.continue_()
-SNAP = """() => { const c = document.getElementById('dioramaCanvas'); const o = document.createElement('canvas'); o.width = 640; o.height = 380;
+SNAP = """() => { const c = roomCanvas; const o = document.createElement('canvas'); o.width = 640; o.height = 380;
   const g = o.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(c, 0, 0, 640, 380); return o.toDataURL(); }"""
 with sync_playwright() as p:
     b = p.chromium.launch(); pg = b.new_page(viewport={'width': 1280, 'height': 900})

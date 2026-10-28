@@ -35,13 +35,10 @@
             font-family: 'Press Start 2P', cursive;
         }
 
-        /* Crisp pixel art rendering */
+        /* The room arrives already blown up crisply (see presentRoom); the browser only smooths the last bit */
         #dioramaCanvas {
-            image-rendering: -moz-crisp-edges;
-            image-rendering: -webkit-crisp-edges;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            box-shadow: 
+            image-rendering: auto;
+            box-shadow:
                 0 0 0 4px #1a110b,
                 0 0 0 8px #5c3d2e,
                 0 0 0 12px #1a110b,
@@ -428,9 +425,7 @@
     </div>
 
     <script>
-        const canvas = document.getElementById('dioramaCanvas');
-        let ctx = canvas.getContext('2d');          // (briefly swapped for a scratch canvas while a sprite is shaded: see spriteFX)
-        ctx.imageSmoothingEnabled = false;
+        const canvas = document.getElementById('dioramaCanvas');   // what you see: the room, scaled up evenly (see presentRoom)
 
         // The room is 320 x 190 "room pixels": every position, route and piece of furniture is
         // measured in those. It's drawn at RES times that (640 x 380), so the art can have
@@ -440,7 +435,44 @@
         const H = 190;
         const RES = 2;
         let SNAP = RES;                             // the pixel grid pxRect snaps to (1 while a sprite's low-res pass is drawn)
-        ctx.setTransform(RES, 0, 0, RES, 0, 0);
+        // The room itself is held at ROOM_RES, finer still, so pieces of the room repainted in more
+        // detail can use quarter pixels (see roomBackdrop). Everything drawn at RES simply lands on
+        // ROOM_RES / RES of its pixels at a time, looking exactly as it always did.
+        const ROOM_RES = 4;
+        const roomCanvas = document.createElement('canvas');      // where the room is drawn, off screen
+        roomCanvas.width = W * ROOM_RES;
+        roomCanvas.height = H * ROOM_RES;
+        let ctx = roomCanvas.getContext('2d');      // (briefly swapped for a scratch canvas while a sprite is shaded: see spriteFX)
+        ctx.imageSmoothingEnabled = false;
+        ctx.setTransform(ROOM_RES, 0, 0, ROOM_RES, 0, 0);
+
+        // The room is shown bigger than it's drawn, and hardly ever by a whole number (640 pixels
+        // across shown 1024 wide, say). Plain pixel-doubling then makes some pixels a screen pixel
+        // wider than their neighbours, so outlines and dithering look lumpy. Instead each frame is
+        // blown up crisply by a whole number to just past the size it's shown at, and the browser
+        // shrinks it the last little way smoothly: every pixel the same size, edges still sharp.
+        // On a screen smaller than the room canvas (a phone), it's shrunk to fit with care instead,
+        // so the finest details blend rather than flicker in and out.
+        const view = canvas.getContext('2d');
+        let viewSize = 0;
+        function sizeView() {
+            const shown = Math.round(canvas.getBoundingClientRect().width * (window.devicePixelRatio || 1));
+            const k = Math.min(3, Math.ceil(shown / roomCanvas.width - 0.01));
+            const w = shown >= roomCanvas.width ? roomCanvas.width * k : Math.max(W, shown);
+            if (w === viewSize) return;
+            viewSize = w;
+            canvas.width = w;                       // (resizing a canvas resets its settings)
+            canvas.height = Math.round(w * H / W);
+            view.imageSmoothingEnabled = w < roomCanvas.width;
+            view.imageSmoothingQuality = 'high';
+            presentRoom();
+        }
+        function presentRoom() {
+            view.drawImage(roomCanvas, 0, 0, canvas.width, canvas.height);
+        }
+        if (window.ResizeObserver) new ResizeObserver(sizeView).observe(canvas);
+        window.addEventListener('resize', sizeView);    // (also when the window moves to a screen with a different pixel density)
+        sizeView();
         // Set up a canvas that holds RES pixels per room pixel, so it can be drawn on in room units
         function hiResCtx(cv) {
             const g = cv.getContext('2d');
@@ -450,7 +482,8 @@
         }
         // Draw a picture painted at RES pixels per room pixel (see painter) at room position (x, y)
         function blit(c, img, x, y) {
-            c.drawImage(img, x, y, img.width / RES, img.height / RES);
+            const r = img.res || RES;               // (a painter's picture knows its own resolution)
+            c.drawImage(img, x, y, img.width / r, img.height / r);
         }
 
         // Time / Weather Modes. 'Real Time' follows your own clock and calendar; the others
@@ -10857,9 +10890,19 @@
                     cut.forEach(([fx, fy]) => { d[(fy * FW + fx) * 4 + 3] = 0; });
                     return P;
                 },
+                // a copy at a finer resolution (a whole multiple of this one), each fine pixel
+                // becoming a little square of them, to carry on painting in more detail
+                finer(res2) {
+                    const Q = painter(w, h, res2), k = res2 / res;
+                    for (let fy = 0; fy < Q.fh; fy++) for (let fx = 0; fx < Q.fw; fx++) {
+                        const i = (Math.floor(fy / k) * FW + Math.floor(fx / k)) * 4, j = (fy * Q.fw + fx) * 4;
+                        Q.d[j] = d[i]; Q.d[j + 1] = d[i + 1]; Q.d[j + 2] = d[i + 2]; Q.d[j + 3] = d[i + 3];
+                    }
+                    return Q;
+                },
                 toCanvas() {
                     const cv = document.createElement('canvas');
-                    cv.width = FW; cv.height = FH;
+                    cv.width = FW; cv.height = FH; cv.res = res;
                     cv.getContext('2d').putImageData(new ImageData(d, FW, FH), 0, 0);
                     return cv;
                 }
@@ -11261,15 +11304,18 @@
             if (key === 'halloween') paintCobweb(P);
             paintWindow(P);
             paintShelf(P);
-            paintFireplace(P);
             paintSteps(P);
             paintCatTree(P);
             paintSofa(P);
             if (key !== 'christmas') paintPlant(P);
             paintRugs(P);
             paintBowlMat(P);
-            WIN_PANES.forEach(([x, y, w, h]) => P.erase(x, y, w, h));   // see-through glass
-            roomArt = P.toCanvas();
+            // Pieces repainted in finer detail go on top at ROOM_RES. (Nothing else overlaps them,
+            // so painting them last changes nothing.)
+            const Q = P.finer(ROOM_RES);
+            paintFireplace(Q);
+            WIN_PANES.forEach(([x, y, w, h]) => Q.erase(x, y, w, h));   // see-through glass
+            roomArt = Q.toCanvas();
             return roomArt;
         }
 
@@ -11554,128 +11600,231 @@
         }
 
         function paintFireplace(P) {
-            // Chimney breast: plaster, softly mottled, lit on its left edge, its right side in shadow
+            // Painted at ROOM_RES (P.res fine pixels to a room pixel, a quarter pixel each), so the
+            // bricks get rounded edges and sunken mortar, the logs bark and charring, the mantel its
+            // grain and the hearth its veins
+            const r = P.res;
+            // Chimney breast: plaster, softly mottled, a hairline crack, lit on its left edge, its
+            // right side in shadow, under a moulded cornice
+            const PLASTER = ['#452a20', '#482d22', '#4a2e23', '#4d3025'];
             P.fine(260, 0, 50, 68, (fx, fy) => {
-                const n = hash2(fx, fy, 77), m = hash2(fx >> 3, fy >> 3, 78);
-                return n < 0.05 ? '#432a20' : n > 0.96 ? '#563729' : m < 0.3 ? '#482d22' : '#4a2e23';
+                const n = hash2(fx, fy, 77);
+                if (n < 0.03) return '#40271d';
+                if (n > 0.975) return '#563729';
+                return rampAt(PLASTER, valueNoise(fx / 18, fy / 18, 78) * 0.8 + valueNoise(fx / 5, fy / 5, 79) * 0.35, fx, fy);
             });
-            P.rect(260, 0, 50, 5, '#3a2419');
-            P.rect(260, 1.5, 50, 0.5, '#6e4a37'); P.rect(260, 2, 50, 0.5, '#5e3e2c'); P.rect(260, 4.5, 50, 0.5, '#2a1912');
-            P.rect(260, 5, 0.5, 63, '#64412f'); P.rect(260.5, 5, 1.5, 63, '#553628');
+            for (let k = 0, x = 291 * r, y = 22 * r; k < 15 * r; k++, y++) {          // the crack: dark, its far side catching the light
+                x += hash2(k, 0, 80) < 0.3 ? 1 : hash2(k, 1, 80) < 0.25 ? -1 : 0;
+                P.fset(x, y, '#3a2219'); P.fset(x + 1, y, '#553628');
+                if (k > 9 * r) break;
+            }
+            const CORNICE = ['#2c1a12', '#3a2419', '#3a2419', '#4a2f22', '#5e3e2c', '#7a5340', '#6e4a37', '#5e3e2c',
+                             '#4a2f22', '#3a2419', '#2c1a12', '#5e3e2c', '#53362a', '#4c3022', '#4c3022', '#462d20',
+                             '#3a2419', '#2e1c13', '#2a1912', '#2a1912'];
+            P.fine(260, 0, 50, 5, (fx, fy) => {
+                const c = CORNICE[Math.min(CORNICE.length - 1, Math.floor(fy * 4 / r))];
+                return hash2(fx, fy, 81) < 0.06 ? shade(c, -0.12) : c;
+            });
+            P.rect(260, 5, 0.25, 63, '#6e4a37'); P.rect(260.25, 5, 0.25, 63, '#64412f'); P.rect(260.5, 5, 1.5, 63, '#553628');
+            P.dither(261.5, 5, 0.5, 63, '#553628', '#4a2e23', 0.5);
             P.rect(308, 5, 1, 63, '#3a2419'); P.rect(309, 5, 1, 63, '#2c1a12');
+            P.tint(307.5, 5, 0.5, 63, -0.18, 0.5);
             P.fade(262, 5, 46, 8, -0.26);
             P.fade(310, 5, 4, 63, -0.3);
-            for (let i = 0; i < 8; i++) P.tint(310 + i / 2, 5, 0.5, 130, -0.3, 1 - i / 8);   // the breast's shadow on the wall
-            // Brickwork: each brick its own colour, lit along the top, recessed mortar, the odd
-            // chipped corner, and a little soot here and there
+            for (let i = 0; i < 4 * r; i++) P.tint(310 + i / r, 5, 1 / r, 130, -0.3, 1 - i / (4 * r));   // the breast's shadow on the wall
+            // Brickwork: each brick its own colour, rounded and lit along the top and left, a little
+            // mottled, pitted and speckled, with sunken mortar, the odd chipped corner, a burnt end
+            // here and there, and soot
             const BR = ['#7a2b1d', '#86321f', '#8f3a25', '#702618', '#9a4430', '#7f2d1e'];
             const M_D = '#3b2219', M = '#563429', M_L = '#6a4334';
+            const BW = 8 * r, BH = 4 * r;                                                 // a brick's face, in fine pixels
             for (let row = 0; row * 5 < 68; row++) {
                 const y0 = 68 + row * 5, offs = row % 2 ? 4 : 0;
                 for (let bx = 254 - offs - 9; bx < 314; bx += 9) {
                     const base = BR[Math.floor(hash2(bx, row, 12) * BR.length)];
-                    const hi = shade(base, 0.2), lit = shade(base, 0.08), lo = shade(base, -0.18), lo2 = shade(base, -0.3), sp = shade(base, -0.34), fl = shade(base, 0.14);
-                    const chip = hash2(bx, row, 14), X = bx * 2, Y = y0 * 2;
+                    const hi = shade(base, 0.24), lit = shade(base, 0.1), lo = shade(base, -0.18), lo2 = shade(base, -0.32), sp = shade(base, -0.36), fl = shade(base, 0.16);
+                    const tone = [shade(base, -0.12), base, shade(base, 0.06)];
+                    const chip = hash2(bx, row, 14), burnt = hash2(bx, row, 22), X = bx * r, Y = y0 * r;
                     P.fine(Math.max(254, bx), y0, Math.min(314, bx + 9) - Math.max(254, bx), Math.min(136, y0 + 5) - y0, (fx, fy) => {
                         const i = fx - X, j = fy - Y;
-                        if (j === 8) return M_D;                                                // mortar: in shadow under the brick...
-                        if (j === 9) return hash2(fx, fy, 15) < 0.25 ? M_L : M;               // ...and lit below
-                        if (i === 16) return M_D;
-                        if (i === 17) return M;
-                        if ((chip < 0.18 && i === 0 && j === 0) || (chip > 0.85 && i === 15 && j === 7)) return M;   // chipped corners
+                        if (j >= BH || i >= BW) {                                              // mortar: shadowed under and beside the brick, lit below
+                            const n = hash2(fx, fy, 15);
+                            if (j <= BH + 1 && (j >= BH || i <= BW + 1)) return M_D;
+                            if (j === BH + 2 || i === BW + 2) return n < 0.5 ? M_D : M;
+                            return n < 0.25 ? M_L : M;
+                        }
+                        const ci = Math.min(i, BW - 1 - i), cj = Math.min(j, BH - 1 - j);
+                        if (ci + cj < 1) return M;                                              // rounded corners
+                        if ((chip < 0.18 && i + j < 4) || (chip > 0.85 && (BW - 1 - i) + (BH - 1 - j) < 4)) return M;   // chipped
                         if (j === 0) return hi;
-                        if (j === 1 || i === 0) return lit;
-                        if (j === 7 || i === 15) return lo;
-                        if (j === 6 && i === 14) return lo2;
+                        if (i === 0 || (j === 1 && dith(fx, fy, 0.6))) return lit;
+                        if (j === BH - 1 || i === BW - 1) return lo2;
+                        if (j === BH - 2 || i === BW - 2) return lo;
+                        if (hash2(fx, fy, 23) < 0.012) return sp;                               // pits, lit on their far side
+                        if (hash2(fx - 1, fy - 1, 23) < 0.012) return fl;
                         const n = hash2(fx, fy, 13);
-                        return n < 0.06 ? sp : n > 0.95 ? fl : base;
+                        if (n < 0.035) return sp;
+                        if (n > 0.975) return fl;
+                        let t = valueNoise(fx / 7, fy / 5, 21);                                  // soft blotches of lighter and darker clay
+                        if (burnt < 0.28) t -= 0.6 * (burnt < 0.14 ? i / BW : 1 - i / BW);     // a darker, over-fired end
+                        return t < 0.3 ? tone[0] : t > 0.74 ? tone[2] : base;
                     });
                     if (hash2(bx, row, 16) < 0.25) {                                         // sooty
-                        for (let fy = Y; fy < Y + 8; fy++) for (let fx = Math.max(508, X); fx < Math.min(628, X + 16); fx++)
-                            if (hash2(fx, fy, 18) < 0.4 + (fy - Y) * 0.03) P.fshade(fx, fy, -0.16);
+                        for (let fy = Y; fy < Y + BH; fy++) for (let fx = Math.max(254 * r, X); fx < Math.min(314 * r, X + BW); fx++)
+                            if (valueNoise(fx / 4, fy / 4, 18) < 0.3 + (fy - Y) / BH * 0.3) P.fshade(fx, fy, -0.16);
                     }
                 }
             }
-            P.rect(254, 68, 0.5, 68, '#b4583e'); P.rect(254.5, 68, 0.5, 68, '#a04a34');   // the lit left edge of the fireplace...
+            // smoke stains rising from the top of the opening
+            for (let fy = 74 * r; fy < 89 * r; fy++) for (let fx = 262 * r; fx < 306 * r; fx++) {
+                const y = fy / r, x = fx / r, half = 12 + (y - 74) * 0.5;
+                const t = clamp((y - 74) / 15, 0, 1) * clamp(1 - Math.abs(x - 284) / half, 0, 1);
+                if (valueNoise(fx / 3, fy / 4, 24) < t * 0.8) P.fshade(fx, fy, -0.18);
+            }
+            P.rect(254, 68, 0.25, 68, '#c46a50'); P.rect(254.25, 68, 0.25, 68, '#b4583e'); P.rect(254.5, 68, 0.5, 68, '#a04a34');   // the lit left edge of the fireplace...
             P.tint(312, 68, 2, 68, -0.32);                                               // ...and its shaded right side
             P.fade(254, 71, 60, 3, -0.32);                                               // shadow under the mantel
             // A soldier course of bricks over the opening
             for (let x = 264; x < 304; x += 3) {
-                const base = BR[Math.floor(hash2(x, 3, 14) * BR.length)], X = x * 2;
-                const hi = shade(base, 0.2), lo = shade(base, -0.2);
+                const base = BR[Math.floor(hash2(x, 3, 14) * BR.length)], X = x * r, Y = 89 * r, SW = 2 * r, SH = 6 * r;
+                const hi = shade(base, 0.24), lit = shade(base, 0.1), lo = shade(base, -0.2), lo2 = shade(base, -0.32);
+                const tone = [shade(base, -0.1), base, shade(base, 0.05)];
                 P.fine(x, 89, 3, 6, (fx, fy) => {
-                    const i = fx - X, j = fy - 178;
-                    if (i === 4) return M_D;
-                    if (i === 5) return M;
+                    const i = fx - X, j = fy - Y;
+                    if (i >= SW) return i === SW || (i === SW + 1 && dith(fx, fy, 0.5)) ? M_D : hash2(fx, fy, 15) < 0.2 ? M_L : M;
+                    if (Math.min(i, SW - 1 - i) + Math.min(j, SH - 1 - j) < 1) return M_D;
                     if (j === 0) return hi;
-                    if (i === 0) return shade(base, 0.08);
-                    if (i === 3 || j === 11) return lo;
-                    return hash2(fx, fy, 17) < 0.07 ? shade(base, -0.3) : base;
+                    if (i === 0 || (j === 1 && dith(fx, fy, 0.6))) return lit;
+                    if (i === SW - 1 || j === SH - 1) return lo2;
+                    if (i === SW - 2 || j === SH - 2) return lo;
+                    const n = hash2(fx, fy, 17);
+                    const t = valueNoise(fx / 4, fy / 6, 25);
+                    return n < 0.05 ? shade(base, -0.34) : n > 0.975 ? shade(base, 0.16) : t < 0.3 ? tone[0] : t > 0.74 ? tone[2] : base;
                 });
             }
             P.rect(264, 95, 40, 0.5, '#3a2019'); P.rect(264, 95.5, 40, 0.5, '#24130d');
-            // The firebox: fire-brick at the back, blackened with soot towards the top, splayed sides
+            // The firebox: fire-brick at the back, blackened with soot towards the top, and splayed
+            // sides whose courses run off in perspective
             P.fine(266, 96, 36, 38, (fx, fy) => {
-                const x = fx / 2, y = fy / 2, j = fy - 192, r = Math.floor(j / 6), i = fx - 532 + (r % 2) * 6, c = Math.floor(i / 12);
-                const mortar = j % 6 === 5 || i % 12 === 11;
-                let col = mortar ? '#1a0d09' : hash2(c, r, 15) < 0.5 ? '#2c1611' : '#33190f';
-                if (!mortar && j % 6 === 0) col = shade(col, 0.1);
-                if (x < 270) col = mortar ? '#21110c' : x < 268 ? '#432419' : '#3b2016';      // the left splay catches a little light
-                if (x > 297.5) col = mortar ? '#120806' : x > 300 ? '#1a0d08' : '#21110b';   // the right splay in shadow
-                if (Math.abs(x - 270) < 0.3 || Math.abs(x - 297.5) < 0.3) col = '#120806';    // the corners where they meet the back
+                const x = (fx + 0.5) / r, y = (fy + 0.5) / r;
+                const left = x < 270, right = x > 297.5;
+                const u = left ? (270 - x) / 4 : right ? (x - 297.5) / 4.5 : 0;           // 0 at the back corner, 1 at the front
+                const yb = 112 + (y - 112) / (1 + 0.4 * u), j = yb - 96, row = Math.floor(j / 3);
+                const along = left || right ? u * 1.7 + (row % 2) * 0.5 : (x - 266 + (row % 2) * 3) / 6;
+                const mortar = j - row * 3 >= 2.5 || along - Math.floor(along) >= (left || right ? 0.88 : 0.91);
+                const c = Math.floor(along), n = hash2(fx, fy, 26);
+                let col;
+                if (left) col = mortar ? '#21110c' : x < 268 ? '#432419' : '#3b2016';           // the left splay catches a little light
+                else if (right) col = mortar ? '#120806' : x > 300 ? '#1a0d08' : '#21110b';     // the right splay in shadow
+                else {
+                    col = mortar ? (j - row * 3 < 2.75 ? '#1a0d09' : '#24130d') : hash2(c, row, 15) < 0.5 ? '#2c1611' : '#33190f';
+                    if (!mortar && j - row * 3 < 0.5) col = shade(col, 0.12);
+                    else if (!mortar && valueNoise(fx / 5, fy / 5, 27) < 0.3) col = shade(col, -0.1);
+                }
+                if (!mortar && n < 0.04) col = shade(col, -0.25);
+                if (Math.abs(x - 270) < 0.2 || Math.abs(x - 297.5) < 0.2) col = '#120806';    // the corners where they meet the back
                 return col;
             });
             P.fade(266, 96, 36, 22, -0.55);
             P.erase(266, 96, 1, 1); P.erase(301, 96, 1, 1);
             P.rect(266, 96, 1, 1, '#3a2019'); P.rect(301, 96, 1, 1, '#3a2019');
-            // ash on the floor of the firebox
+            // ash on the floor of the firebox, with flakes of pale ash and bits of charcoal
+            const ASH = ['#2a201c', '#3a302c', '#4a403b', '#5b504a', '#6e625b'];
             P.fine(266, 132, 36, 2, (fx, fy) => {
-                const n = hash2(fx, fy, 16);
-                return fy < 265 ? (n < 0.2 ? '#4a403b' : '#2a201c') : (n < 0.3 ? '#5b504a' : n > 0.9 ? '#6e625b' : '#3a302c');
+                const n = hash2(fx, fy, 16), y = fy / r - 132;
+                if (n < 0.04) return '#1e1612';
+                if (n > 0.965) return '#7d7069';
+                return rampAt(ASH, 0.15 + y * 0.28 + (valueNoise(fx / 6, fy / 3, 31) - 0.5) * 0.7, fx, fy);
             });
-            // Logs on iron fire-dogs: rough bark, pale end grain with its rings
-            const L = painter(30, 10);
+            // Logs on iron fire-dogs: ridged bark, charred and crazed underneath, pale end grain
+            // with its rings and a split
+            const L = painter(30, 10, r);
             const bark = ['#22100a', '#3a1c09', '#52280d', '#6e3812', '#8a4c1c'];
             const log = (x0, x1, y0, y1, seed) => L.fine(x0, y0, x1 - x0, y1 - y0, (fx, fy) => {
-                const v = ((fy + 0.5) / 2 - y0) / (y1 - y0);                                   // 0 at the top of the log, 1 underneath
+                const v = ((fy + 0.5) / r - y0) / (y1 - y0);                                   // 0 at the top of the log, 1 underneath
+                if (v > 0.68 && valueNoise(fx / 3, fy / 2, seed + 7) < 0.5) return hash2(fx, fy, seed + 8) < 0.15 ? '#2e140a' : '#140a07';   // charred
                 let t = 1 - Math.abs(v - 0.3) * 1.5;
-                if (hash2(fx >> 2, fy, seed) < 0.22) t -= 0.35;                                  // fissures in the bark
-                if (hash2(fx, fy, seed + 1) < 0.05) t += 0.3;
+                const groove = q => valueNoise(fx / 9, q / 1.6, seed) < 0.33;                 // fissures in the bark, running along the log
+                if (groove(fy)) t -= 0.42;
+                else if (groove(fy - 1)) t += 0.18;                                             // the lip below a fissure catches the light
+                if (hash2(fx, fy, seed + 1) < 0.04) t += 0.3;
                 return rampAt(bark, t, fx, fy);
             });
             log(4, 20, 0, 4, 17);
             log(0, 24, 3, 8, 18);
-            L.fine(0, 3, 4, 5, (fx, fy) => {                                                   // the sawn end
-                const dx = (fx + 0.5) / 2 - 2, dy = (fy + 0.5) / 2 - 5.5, e = Math.hypot(dx / 1.9, dy / 2.4);
+            const endGrain = (cx, cy, rx, ry, seed) => L.fine(cx - rx, cy - ry, rx * 2, ry * 2, (fx, fy) => {
+                const dx = (fx + 0.5) / r - cx, dy = (fy + 0.5) / r - cy, e = Math.hypot(dx / rx, dy / ry);
                 if (e > 1) return null;
-                if (e > 0.82) return '#7a5430';
-                const ring = Math.floor(e * 5 + hash2(fx, fy, 19) * 0.4);
-                return ring % 2 ? '#a7804f' : '#c9a26e';
+                if (e > 0.88) return dx + dy < 0 ? '#7a5430' : '#5a3a1e';                     // the bark round the rim
+                let col = e < 0.1 ? '#8a6438' : Math.floor(e * 7 + valueNoise(fx / 3, fy / 3, seed) * 0.8) % 2 ? '#b38c58' : '#c9a26e';
+                if (Math.abs(Math.atan2(dy, dx) - 0.9) < 0.12 && e > 0.25) col = '#6a4a2a';   // a drying split
+                return dx / rx + dy / ry > 0.9 ? shade(col, -0.14) : col;
             });
+            endGrain(2, 5.5, 1.9, 2.4, 19);
+            endGrain(5.4, 2, 1.3, 1.9, 28);
             L.outline(-0.7);
             stamp(P, L, 272, 124, null);
-            [269, 297].forEach(dx => P.fmap(dx, 124.5, ['..hh..', '.hbbd.', '.hbbd.', '..bd..', '..bd..', '..bd..', '..bd..', '..bd..', '..bd..', '..bd..', '..bd..', '.hbbd.', 'hbbbdd', 'bb..dd', 'bd...d'], { h: '#7a7684', b: '#2b2930', d: '#121116' }));
-            // Stone hearth slab
+            [269, 297].forEach(dx => {
+                const D = painter(3, 7.5, r);
+                D.fine(0, 0, 3, 7.5, (fx, fy) => {
+                    const x = (fx + 0.5) / r, y = (fy + 0.5) / r;
+                    let a = null;                                                              // where across the iron this is, 0 to 1
+                    const ball = Math.hypot(x - 1.5, y - 1);
+                    if (ball < 0.9) a = (x - 0.6) / 1.8 - (y < 0.7 ? 0.2 : 0);
+                    else if (y >= 1.6 && y < 5.6 && x >= 1 && x < 2) a = x - 1;                // the post
+                    else if (y >= 5.4 && y < 6 && x >= 0.6 && x < 2.4) a = (x - 0.6) / 1.8;    // a collar
+                    else if (y >= 6) {                                                         // the splayed feet
+                        const s = (y - 6) / 1.5, lx = 1 - s, rx = 2 + s;
+                        if (Math.abs(x - lx) < 0.4) a = 0.15; else if (Math.abs(x - rx) < 0.4) a = 0.85;
+                    }
+                    if (a === null) return null;
+                    return a < 0.18 ? '#7a7684' : a < 0.38 ? '#4a4752' : a < 0.75 ? '#2b2930' : '#121116';
+                });
+                D.outline(-0.6);
+                stamp(P, D, dx, 124.5, null);
+            });
+            // Stone hearth slab: a chamfered front edge, slabs each their own shade, with veins
+            const STONE = ['#433936', '#4a3f3b', '#4f4440', '#564a45'];
+            const EDGE = ['#8e8078', '#7e7069', '#74665f', '#6e605a', '#62554f', '#5b4f4a'];
             P.fine(250, 134, 66, 5, (fx, fy) => {
-                const j = fy - 268, n = hash2(fx, fy, 19), m = hash2(fx >> 2, fy >> 1, 20);
-                if (j === 0) return '#7e7069';
-                if (j === 1) return '#6e605a';
-                if (j === 2) return '#5b4f4a';
-                if (j >= 8) return j === 9 ? '#1e1816' : '#2c2421';
-                if ((fx - 500) % 44 === 43) return '#2f2724';                                  // the joints between the slabs
-                if ((fx - 500) % 44 === 0) return '#5e524c';
-                return n < 0.1 ? '#433936' : n > 0.93 ? '#665a53' : m < 0.3 ? '#4a3f3b' : '#4f4440';
+                const j = fy - 134 * r, sx = fx - 250 * r, J = 22 * r, k = ((sx % J) + J) % J;
+                if (j >= 4 * r) return j >= 4.5 * r ? '#1e1816' : '#2c2421';
+                if (k >= J - 2) return k === J - 1 ? '#2f2724' : '#3a302c';                    // the joints between the slabs
+                if (k === 0) return '#5e524c';
+                if (j < EDGE.length) return EDGE[j];
+                const slab = Math.floor(sx / J), n = hash2(fx, fy, 19);
+                if (n < 0.06) return '#3c3330';
+                if (n > 0.97) return '#665a53';
+                if (Math.abs(valueNoise(fx / 16, fy / 5, 33 + slab) - 0.5) < 0.03) return '#62564f';
+                return rampAt(STONE, valueNoise(fx / 9, fy / 4, 20) * 0.9 + (hash2(slab, 0, 34) - 0.5) * 0.5, fx, fy);
             });
             P.fade(250, 139, 66, 4, -0.4);
-            // Oak mantel beam with corbels
-            const M2 = painter(68, 12);
-            M2.rect(1, 0, 66, 0.5, '#9a6c4a'); M2.rect(1, 0.5, 66, 0.5, '#80553a');
-            woodFill(M2, 1, 1, 66, 3, '#5a3824', 22, -0.13, 0.08, 9);
-            M2.rect(1, 3.5, 66, 0.5, '#4a2c1b');
-            M2.rect(1, 4, 66, 0.5, '#3b2316'); M2.rect(1, 4.5, 66, 0.5, '#2e1b11');
+            // Oak mantel beam with a beaded moulding and carved corbels
+            const M2 = painter(68, 12, r);
+            M2.rect(1, 0, 66, 0.25, '#a87a56'); M2.rect(1, 0.25, 66, 0.25, '#9a6c4a'); M2.rect(1, 0.5, 66, 0.5, '#80553a');
+            const OAK = ['#4a2c1b', '#523220', '#5a3824', '#62402a', '#6c472f'];
+            M2.fine(1, 1, 66, 2.5, (fx, fy) => {
+                const x = fx / r, y = fy / r;
+                const kx = x - 21, ky = y - 2.2, kd = Math.hypot(kx / 1, ky / 0.4);           // a small knot, the grain flowing round it
+                if (kd < 1) return kd < 0.5 ? '#3b2316' : '#4a2c1b';
+                const w = y * 3.1 + Math.sin(x / 9 + valueNoise(x / 14, 0, 41) * 5) * 0.9 + 1.4 / (1 + kd * kd);
+                const g = w - Math.floor(w);
+                let t = 0.62 - (y - 1) * 0.12 + (valueNoise(fx / 20, fy / 6, 42) - 0.5) * 0.3;
+                if (g < 0.16) t -= 0.35;                                                       // dark grain lines
+                if (hash2(Math.floor(fx / 5), fy, 43) < 0.05) t += 0.25;                       // the silvery flecks of oak
+                return rampAt(OAK, t, fx, fy);
+            });
+            [['#4a2c1b', 3.5], ['#3b2316', 3.75], ['#6a4430', 4], ['#4a2c1b', 4.25], ['#3b2316', 4.5], ['#2e1b11', 4.75]].forEach(([c, y]) => M2.rect(1, y, 66, 0.25, c));
             M2.rect(3, 5, 62, 0.5, '#4a2c1b'); M2.rect(3, 5.5, 62, 0.5, '#2a1810'); M2.rect(3, 6, 62, 1, '#1d110a');
-            const CORB = ['hhbbbbbd', 'hhbbbbbd', '.hbbbbdd', '.hbbbbd.', '..hbbbd.', '..hbbdd.', '...hbd..', '...hbd..', '....bd..', '....dd..'];
-            [5, 57].forEach(cx => M2.fmap(cx, 7, CORB, { h: '#7a5240', b: '#4a2c1b', d: '#24150e' }));
+            [5, 57].forEach(cx => M2.fine(cx, 7, 4, 5, (fx, fy) => {
+                const x = (fx + 0.5) / r - cx, y = (fy + 0.5) / r - 7, v = y / 5;
+                const xl = 2.1 * (1 - Math.cos(v * Math.PI / 2)) ** 0.8, xr = 4 - v * 1.1;   // a curved bracket, narrowing downwards
+                const vd = Math.hypot(x - 2.5, y - 3.9);                                       // and a little scroll near its foot
+                if (vd < 0.65) return vd < 0.3 ? '#4a2c1b' : x + y < 6.2 ? '#7a5240' : '#24150e';
+                if (x < xl || x >= xr) return null;
+                const t = (x - xl) / (xr - xl);
+                return t < 0.14 || y < 0.3 ? '#7a5240' : t < 0.24 && dith(fx, fy, 0.5) ? '#7a5240' : t > 0.82 ? '#24150e' : t > 0.72 && dith(fx, fy, 0.5) ? '#24150e' : '#4a2c1b';
+            }));
             M2.outline(-0.65);
             stamp(P, M2, 249, 64, [1, 2, -0.3, true]);
         }
@@ -13170,6 +13319,7 @@
             drawSpeechBubbles();
             drawLaserDot();
             drawToolCursor();
+            presentRoom();
 
             // 5. Refresh UI status cards periodically
             if (globalTick % 15 === 0) {
@@ -13446,7 +13596,7 @@
         }
 
         window.takePhoto = function() {
-            const S = 2 * RES, pad = 32, cap = 104;                   // two photo pixels for every fine pixel
+            const S = ROOM_RES, pad = 32, cap = 104;                  // a photo pixel for every pixel of the room canvas
             const out = document.createElement('canvas');
             out.width = W * S + pad * 2;
             out.height = H * S + pad + cap;
@@ -13454,7 +13604,7 @@
             g.fillStyle = '#fbf7ee';                                  // the polaroid card
             g.fillRect(0, 0, out.width, out.height);
             g.imageSmoothingEnabled = false;
-            g.drawImage(canvas, pad, pad, W * S, H * S);
+            g.drawImage(roomCanvas, pad, pad, W * S, H * S);
             g.strokeStyle = 'rgba(60, 40, 25, 0.25)';
             g.strokeRect(pad - 0.5, pad - 0.5, W * S + 1, H * S + 1);
             const d = nowDate();
