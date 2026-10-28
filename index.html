@@ -10175,9 +10175,11 @@
         // ---------- The view outside, 16-bit style ----------
         // The sky: a smooth gradient from the top of the window to the horizon, in bands
         // dithered into one another (like the colour gradients on a Super Nintendo)
-        const SKY_FW = 74 * RES;
+        // Everything out there is painted at VIEW_RES, the room canvas's own quarter pixels
+        const VIEW_RES = ROOM_RES;
+        const SKY_FW = 74 * VIEW_RES;
         const skyCanvas = document.createElement('canvas');
-        skyCanvas.width = SKY_FW; skyCanvas.height = SKY_FW;
+        skyCanvas.width = SKY_FW; skyCanvas.height = SKY_FW; skyCanvas.res = VIEW_RES;
         const skyG = skyCanvas.getContext('2d');
         const skyImg = skyG.createImageData(SKY_FW, SKY_FW);
         let skyKey = '';
@@ -10185,7 +10187,7 @@
             const key = top + bot;
             if (key !== skyKey) {
                 skyKey = key;
-                const a = rgbOf(top), b = rgbOf(bot), BANDS = 10, d = skyImg.data, fw = w * RES, fh = h * RES;
+                const a = rgbOf(top), b = rgbOf(bot), BANDS = 10, d = skyImg.data, fw = w * VIEW_RES, fh = h * VIEW_RES;
                 for (let j = 0; j < fh; j++) {
                     const s = (j / (fh - 1)) * BANDS, k = Math.floor(s), f = s - k;
                     for (let i = 0; i < fw; i++) {
@@ -10200,13 +10202,13 @@
 
         // Round things (the sun, the moon, clouds, tree tops) are painted from little
         // shape maps: 0 clear, then 1 (shadow) .. 4 (highlight), coloured as they're drawn.
-        // The maps hold a cell per fine pixel (RES per room pixel), so the curves come out smooth.
+        // The maps hold a cell per quarter pixel (VIEW_RES per room pixel), so the curves come out smooth.
         function discMap(r, light = [-0.55, -0.6]) {
-            const n = Math.ceil(r * 2 * RES), m = [];
+            const n = Math.ceil(r * 2 * VIEW_RES), m = [];
             for (let j = 0; j < n; j++) {
                 const row = [];
                 for (let i = 0; i < n; i++) {
-                    const dx = (i + 0.5) / RES - r, dy = (j + 0.5) / RES - r, e = Math.hypot(dx, dy) / r;
+                    const dx = (i + 0.5) / VIEW_RES - r, dy = (j + 0.5) / VIEW_RES - r, e = Math.hypot(dx, dy) / r;
                     if (e > 1) { row.push(0); continue; }
                     const lit = (dx * light[0] + dy * light[1]) / r;          // towards the light: +1
                     row.push(lit > 0.45 ? 4 : lit > -0.05 ? 3 : lit > -0.5 ? 2 : 1);
@@ -10217,16 +10219,16 @@
         }
         function blobMap(parts, w, h) {   // a union of discs [cx, cy, r], lit from the top left
             const m = [];
-            for (let j = 0; j < h * RES; j++) {
+            for (let j = 0; j < h * VIEW_RES; j++) {
                 const row = [];
-                for (let i = 0; i < w * RES; i++) {
+                for (let i = 0; i < w * VIEW_RES; i++) {
                     let best = null;
                     parts.forEach(([cx, cy, r]) => {
-                        const dx = (i + 0.5) / RES - cx, dy = (j + 0.5) / RES - cy, e = Math.hypot(dx, dy) / r;
+                        const dx = (i + 0.5) / VIEW_RES - cx, dy = (j + 0.5) / VIEW_RES - cy, e = Math.hypot(dx, dy) / r;
                         if (e <= 1 && (!best || e < best.e)) best = { e, lit: -(dx + dy) / (r * 1.4) };
                     });
                     if (!best) { row.push(0); continue; }
-                    const v = best.lit + (j < h * RES * 0.45 ? 0.25 : -0.15);
+                    const v = best.lit + (j < h * VIEW_RES * 0.45 ? 0.25 : -0.15);
                     row.push(v > 0.4 ? 4 : v > 0 ? 3 : v > -0.45 ? 2 : 1);
                 }
                 m.push(row);
@@ -10234,16 +10236,16 @@
             return m;
         }
         function paintMap(c, x, y, m, cols, alpha = 1) {
-            const prev = c.globalAlpha, u = 1 / RES;
+            const prev = c.globalAlpha, u = 1 / VIEW_RES;
             if (alpha < 1) c.globalAlpha = prev * alpha;
-            x = Math.round(x * RES) / RES; y = Math.round(y * RES) / RES;
+            x = Math.round(x * VIEW_RES) / VIEW_RES; y = Math.round(y * VIEW_RES) / VIEW_RES;
             for (let j = 0; j < m.length; j++) {
                 let i = 0;
                 while (i < m[j].length) {               // runs of the same shade in one go
                     const v = m[j][i];
                     let k = i + 1;
                     while (k < m[j].length && m[j][k] === v) k++;
-                    if (v && cols[v]) hd(c, x + i * u, y + j * u, (k - i) * u, u, cols[v]);
+                    if (v && cols[v]) { c.fillStyle = cols[v]; c.fillRect(x + i * u, y + j * u, (k - i) * u, u); }
                     i = k;
                 }
             }
@@ -10276,7 +10278,7 @@
                 paintMap(ctx, sx - 4, sy - 4, HALO_LG, [0, '#ffb36b', '#ffb36b', '#ffb36b', '#ffb36b']);
                 ctx.restore();
                 BIG_SUN_MAP.forEach((row, j) => {
-                    const y = j / RES;
+                    const y = j / VIEW_RES;
                     if ((y >= 10 && y < 10.5) || (y >= 12.5 && y < 13.5) || y >= 14.5) return;   // stripes of sky across the bottom
                     const col = y < 5 ? '#fff0a0' : y < 8 ? '#fde047' : y < 11 ? '#fbbf24' : '#fb923c';
                     paintMap(ctx, sx, sy + y, [row.map(v => v ? 1 : 0)], [0, col]);
@@ -10296,10 +10298,10 @@
         }
         let moonArt = null;
         function paintMoon() {
-            const M = painter(12, 12);
+            const M = painter(12, 12, VIEW_RES);
             MOON_MAP.forEach((row, j) => row.forEach((v, i) => {
                 if (!v) return;
-                const x = (i + 0.5) / RES, y = (j + 0.5) / RES;
+                const x = (i + 0.5) / VIEW_RES, y = (j + 0.5) / VIEW_RES;
                 const dx = x - 7.5, dy = y - 4;                               // the shadow's centre, up and to the right
                 const d = Math.hypot(dx, dy);
                 if (d < 4.6) return;
@@ -10308,11 +10310,11 @@
                 if (d < 5.1) col = '#cdb466';                                // the soft edge of the shadow
                 M.fset(i, j, col);
             }));
-            return symbolFiner(M)[0];
+            return M;
         }
 
         function drawClouds(o, winX, winY, winW, dark) {
-            const cloudShift = (Math.floor(globalTick * 0.08 * RES) / RES) % 80;      // drifting a fine pixel at a time
+            const cloudShift = (Math.floor(globalTick * 0.08 * VIEW_RES) / VIEW_RES) % 80;   // drifting a quarter pixel at a time
             if (o.precip || o.cloud > 0.8) {
                 // a heavy grey blanket with a lumpy underside
                 const cc = o.precip ? mixHex('#6b7280', '#1a2233', dark) : mixHex('#9aa3ae', '#1f2838', dark);
@@ -10353,8 +10355,8 @@
             winter: { kinds: [['#1c3a33', '#2f5246', '#3e6a58', '#56826c'], null, ['#22402f', '#33584a', '#466e5a', '#5d8670']], hill: '#9fb0b8', grass: '#6a7f6a' }
         };
         const sceneCanvas = document.createElement('canvas');
-        sceneCanvas.width = 74 * RES; sceneCanvas.height = 74 * RES;
-        const sceneG = hiResCtx(sceneCanvas);
+        sceneCanvas.width = 74 * VIEW_RES; sceneCanvas.height = 74 * VIEW_RES; sceneCanvas.res = VIEW_RES;
+        const sceneG = hiResCtx(sceneCanvas, VIEW_RES);
         let sceneKey = '';
         function drawScenery(o, winX, winY, dark) {
             const snowy = o.season === 'winter' || (o.live && o.precip === 'snow');
@@ -10365,41 +10367,52 @@
                 const g = sceneG, pal = SCENE_PAL[o.season] || SCENE_PAL.summer;
                 const tone = c => { if (dusk) c = mixHex(c, '#451a2b', 0.5); return mixHex(c, '#0c1322', dark); };
                 g.clearRect(0, 0, 74, 74);
+                const Q = 1 / VIEW_RES, qr = v => Math.round(v * VIEW_RES) / VIEW_RES;   // (traced a quarter pixel at a time)
+                const fill = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
                 // far hills, pale with distance
                 const hill = tone(mixHex(pal.hill, o.skyBot, 0.45)), hillLit = tone(mixHex(shade(pal.hill, 0.2), o.skyBot, 0.45));
                 const hillSnow = tone(mixHex('#e8eef4', o.skyBot, 0.3));
-                const hillFar = tone(mixHex(pal.hill, o.skyBot, 0.65));
-                for (let i = 0; i < 74; i += 0.5) {
-                    const far = Math.round((46.5 + 2.5 * Math.sin(i * 0.06 + 3.1) + 1.2 * Math.sin(i * 0.17 + 1)) * 2) / 2;   // a fainter range behind
-                    hd(g, i, far, 0.5, 74 - far, hillFar);
+                const hillFar = tone(mixHex(pal.hill, o.skyBot, 0.65)), hillFarLit = tone(mixHex(shade(pal.hill, 0.1), o.skyBot, 0.6));
+                for (let i = 0; i < 74; i += Q) {
+                    const far = qr(46.5 + 2.5 * Math.sin(i * 0.06 + 3.1) + 1.2 * Math.sin(i * 0.17 + 1));   // a fainter range behind
+                    fill(i, far, Q, 74 - far, hillFar);
+                    fill(i, far, Q, Q, hillFarLit);
                 }
-                for (let i = 0; i < 74; i += 0.5) {
-                    const top = Math.round((50 + 3.5 * Math.sin(i * 0.085 + 1.2) + 1.8 * Math.sin(i * 0.23)) * 2) / 2;
-                    hd(g, i, top, 0.5, 74 - top, hill);
-                    hd(g, i, top, 0.5, 0.5, snowy ? hillSnow : hillLit);
-                    if (hash2(i * 2, 7, 66) < 0.3) hd(g, i, top + 1 + hash2(i * 2, 8, 66) * 4, 0.5, 0.5, hillLit);   // fields and hedges, far off
+                for (let i = 0; i < 74; i += Q) {
+                    const top = qr(50 + 3.5 * Math.sin(i * 0.085 + 1.2) + 1.8 * Math.sin(i * 0.23));
+                    fill(i, top, Q, 74 - top, hill);
+                    fill(i, top, Q, Q * 2, snowy ? hillSnow : hillLit);
+                    if (!snowy) fill(i, top + Q * 2, Q, Q, mixHex(hillLit, hill, 0.5));
+                    if (hash2(Math.floor(i * 2), 7, 66) < 0.3) fill(i, qr(top + 1 + hash2(Math.floor(i * 2), 8, 66) * 4), Q, Q, hillLit);   // fields and hedges, far off
                 }
                 // the trees: rounded crowns lit from the top left, on little trunks
                 SCENE_TREES.forEach((t, n) => {
-                    const trunk = tone('#3b2a20');
-                    pxRect(g, t.x + Math.floor(t.w / 2) - 1, t.y + t.h - 2, 2, 74 - t.y - t.h + 2, trunk);
-                    hd(g, t.x + Math.floor(t.w / 2) - 1, t.y + t.h - 2, 0.5, 74 - t.y - t.h + 2, tone('#5a4232'));   // lit on the left
+                    const trunk = tone('#3b2a20'), tx = t.x + Math.floor(t.w / 2) - 1;
+                    fill(tx, t.y + t.h - 2, 2, 74 - t.y - t.h + 2, trunk);
+                    fill(tx, t.y + t.h - 2, Q * 2, 74 - t.y - t.h + 2, tone('#5a4232'));   // lit on the left
+                    fill(tx + Q * 2, t.y + t.h - 2, Q, 74 - t.y - t.h + 2, tone('#4a362a'));
                     let cols = pal.kinds[t.kind];
                     if (!cols) {
-                        // winter: a bare tree, its branches traced in snow
-                        const bx = t.x + Math.floor(t.w / 2) - 1, br = tone('#4a3a33'), sn = tone('#e8eef4');
-                        pxRect(g, bx, t.y + 2, 2, 74 - t.y, br);
-                        [[-4, 4, 1], [3, 3, 1], [-3, 8, 0], [4, 7, 0], [-1, 1, 0]].forEach(([dx, dy]) => {
-                            const steps = Math.abs(dx);
-                            for (let k = 0; k <= steps; k++) pxRect(g, bx + Math.sign(dx) * k + (dx > 0 ? 1 : 0), t.y + dy + 3 - Math.round(k * 0.7), 1, 1, br);
-                            pxRect(g, bx + dx + (dx > 0 ? 1 : 0), t.y + dy + 2 - Math.round(steps * 0.7), 1, 1, sn);
+                        // winter: a bare tree, its branches reaching up and out, traced in snow
+                        const br = tone('#4a3a33'), brLit = tone('#5e4c44'), sn = tone('#e8eef4');
+                        fill(tx, t.y + 2, 2, 74 - t.y, br);
+                        fill(tx, t.y + 2, Q * 2, 74 - t.y, brLit);
+                        [[-4, 4], [3, 3], [-3, 8], [4, 7], [-1, 1]].forEach(([dx, dy]) => {
+                            const x0 = tx + 1, y0 = t.y + dy + 3.5, x1 = x0 + dx + Math.sign(dx) * 0.5, y1 = y0 - Math.abs(dx) * 0.7 - 0.5;
+                            const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * VIEW_RES);
+                            for (let k = 0; k <= steps; k++) {
+                                const f = k / steps, w = 0.75 - f * 0.25;                       // tapering towards the tip
+                                fill(qr(x0 + (x1 - x0) * f - w / 2), qr(y0 + (y1 - y0) * f - w / 2), qr(w) || Q, qr(w) || Q, br);
+                            }
+                            fill(qr(x1 - 0.5), qr(y1 - 0.75), 1, 0.5, sn);                      // snow along the tip
                         });
                         return;
                     }
                     cols = [0, ...cols.map(tone)];
-                    // the crown, fine pixel by fine pixel, with a leafy texture: little clumps of
+                    // the crown, a quarter pixel at a time, with a leafy texture: little clumps of
                     // lighter leaves on the sunny side, dark gaps between them in the shade
-                    const u = 1 / RES, bc = tone('#f9a8d4'), sn = tone('#e8eef4');
+                    const bc = tone('#f9a8d4'), sn = tone('#e8eef4');
+                    const open = (i, j, d) => { for (let k = 1; k <= d; k++) if (j - k < 0 || !t.map[j - k][i]) return true; return false; };
                     t.map.forEach((row, j) => row.forEach((v, i) => {
                         if (!v) return;
                         const h = hash2(i + n * 97, j, 61), clump = hash2((i >> 1) + n * 31, j >> 1, 62);
@@ -10408,24 +10421,24 @@
                         else if (clump < 0.2 && v <= 3) k = Math.max(1, v - 1);
                         if (h < 0.08) k = Math.max(1, k - 1);
                         let col = cols[k];
-                        if (o.season === 'spring' && hash2(i + n * 13, j, 63) < 0.07) col = bc;             // blossom
-                        if (snowy && v >= 3 && (j === 0 || !t.map[j - 1][i] || (j > 1 && !t.map[j - 2][i]))) col = sn;   // snow settled on the tops
-                        hd(g, t.x + i * u, t.y + j * u, u, u, col);
+                        if (o.season === 'spring' && hash2((i >> 1) + n * 13, j >> 1, 63) < 0.07) col = bc;   // blossom
+                        if (snowy && v >= 3 && open(i, j, VIEW_RES)) col = sn;                               // snow settled on the tops
+                        fill(t.x + i * Q, t.y + j * Q, Q, Q, col);
                     }));
                 });
                 // the lawn
                 const grass = tone(pal.grass), grassLit = tone(shade(pal.grass, 0.15)), grassDark = tone(shade(pal.grass, -0.15));
                 pxRect(g, 0, 70, 74, 4, grass);
-                for (let i = 0; i < 74; i += 0.5) {                                  // blades of grass along the top
-                    const hgt = hash2(i * 2, 3, 65);
-                    if (hgt < 0.55) hd(g, i, 70 - (hgt < 0.2 ? 1 : 0.5), 0.5, 1, grass);
+                for (let i = 0; i < 74; i += Q) {                                    // blades of grass along the top
+                    const hgt = hash2(Math.floor(i * VIEW_RES), 3, 65);
+                    if (hgt < 0.55) fill(i, 70 - (hgt < 0.2 ? 1 : hgt < 0.38 ? 0.75 : 0.5), Q, 1.25, hash2(Math.floor(i * VIEW_RES), 4, 65) < 0.3 ? grassLit : grass);
                 }
-                hd(g, 0, 70, 74, 0.5, grassLit);
-                for (let i = 0; i < 74; i += 0.5) for (let j = 70.5; j < 74; j += 0.5) {
-                    const n = hash2(i * 2, j * 2, 67);
-                    if (n < 0.12) hd(g, i, j, 0.5, 0.5, grassDark); else if (n > 0.93) hd(g, i, j, 0.5, 0.5, grassLit);
+                fill(0, 70, 74, Q, grassLit);
+                for (let i = 0; i < 74; i += Q) for (let j = 70.25; j < 74; j += Q) {
+                    const nn = hash2(Math.floor(i * VIEW_RES), Math.floor(j * VIEW_RES), 67);
+                    if (nn < 0.12) fill(i, j, Q, Q, grassDark); else if (nn > 0.93) fill(i, j, Q, Q, grassLit);
                 }
-                if (snowy) { pxRect(g, 0, 71, 74, 3, tone('#e2e8f0')); hd(g, 0, 70.5, 74, 0.5, tone('#f1f5f9')); }
+                if (snowy) { pxRect(g, 0, 71, 74, 3, tone('#e2e8f0')); fill(0, 70.5, 74, 0.5, tone('#f1f5f9')); fill(0, 70.5, 74, Q, tone('#ffffff')); }
             }
             blit(ctx, sceneCanvas, winX, winY);
         }
