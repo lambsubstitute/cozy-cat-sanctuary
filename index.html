@@ -117,12 +117,23 @@
         #toastBanner {
             width: max-content; max-width: calc(100% - 24px); text-align: center;
             font-size: var(--toast-px, 18px); line-height: 1.05; letter-spacing: 0.02em;
-            padding: 0.2em 0.65em 0.28em;
+            padding: 0.3em 1.05em 0.38em;
             color: #fff1cf;
-            background: #24170e;
+            /* a little wooden plaque: brass studs in its corners, a faint grain, lighter towards the top */
+            --stud: #fff2b8 0 0.05em, #e0a940 0.06em 0.12em, #6b4413 0.13em 0.17em, transparent 0.18em;
+            background:
+                radial-gradient(circle at 0.55em 0.55em, var(--stud)),
+                radial-gradient(circle at calc(100% - 0.55em) 0.55em, var(--stud)),
+                radial-gradient(circle at 0.55em calc(100% - 0.55em), var(--stud)),
+                radial-gradient(circle at calc(100% - 0.55em) calc(100% - 0.55em), var(--stud)),
+                repeating-linear-gradient(90deg, rgba(255, 214, 160, 0.04) 0 0.45em, rgba(0, 0, 0, 0.06) 0.45em 0.8em, rgba(255, 214, 160, 0.02) 0.8em 1.55em, rgba(0, 0, 0, 0.03) 1.55em 2.1em),
+                linear-gradient(#3e2818, #2b1b10 55%, #20130a);
             border: 3px solid #0f0906;
-            border-radius: 3px;
-            box-shadow: inset 0 0 0 2px #e0a33a, inset 0 0 0 4px #5a3a22, 0 4px 0 #0c0805, 0 10px 24px rgba(0, 0, 0, 0.55);
+            border-radius: 0.18em;
+            /* its brass frame, bevelled: lit along the top and left, shaded along the bottom and right */
+            box-shadow: inset 0.1em 0.1em 0 #fbe09a, inset -0.1em -0.1em 0 #8a5a1c, inset 0 0 0 0.19em #d39a36,
+                        inset 0 0 0 0.25em #4a2f1a, inset 0 0.35em 0.5em -0.2em rgba(255, 220, 160, 0.12),
+                        0 4px 0 #0c0805, 0 10px 24px rgba(0, 0, 0, 0.55);
             text-shadow: var(--toast-sh, 1px) var(--toast-sh, 1px) 0 #0c0805, 0 0 1px #0c0805;
             scale: 0.94;
             transition: opacity 0.3s, scale 0.18s ease-out;
@@ -7382,42 +7393,33 @@
             const dark = clamp(outside.darkness / 0.36, 0, 1);
             const col = h => mixHex(h, '#0c1322', dark * 0.3);
             const back = col('#7a5230'), face = col('#d9b48a'), chest = col('#c9a27a'), streak = col('#5a3a1f');
+            // round shapes (see fineDabs), lit from above: plump body, big round head, a pale facial disc
+            const round = (c, r) => (dx, dy) => dy < -r * 0.45 ? shade(c, 0.14) : dy > r * 0.5 ? shade(c, -0.2) : c;
             if (b.phase !== 'perch') {                                // gliding, wings out
-                const up = Math.floor(b.t / 5) % 2;
-                pxRect(ctx, -3, -7, 7, 5, back);
-                pxRect(ctx, -7, up ? -8 : -5, 4, 2, back);
-                pxRect(ctx, 4, up ? -8 : -5, 4, 2, back);
-                pxRect(ctx, -2, -9, 5, 3, back);
-                pxRect(ctx, -1, -8, 3, 2, face);
-                pxRect(ctx, -1, -8, 1, 1, '#111827');
-                pxRect(ctx, 1, -8, 1, 1, '#111827');
+                const up = Math.floor(b.t / 5) % 2, wy = up ? -7.5 : -4.5;
+                const wing = [];
+                for (let k = 0; k <= 8; k++) { const f = k / 8; wing.push([1 + f * 6.5, -5.5 + (wy + 5.5) * f, 1.5 - f * 0.7, round(back, 1.5)]); }
+                fineDabs(ctx, wing.concat(wing.map(([x, y, r, c]) => [1 - x, y, r, c])));
+                fineDabs(ctx, [[0.5, -5, 2.6, round(back, 2.6)], [0.5, -8, 2.1, round(back, 2.1)], [0.5, -7.7, 1.4, face],
+                               [-0.1, -7.9, 0.5, '#111827'], [1.1, -7.9, 0.5, '#111827']]);
                 return;
             }
-            pxRect(ctx, -3, -6, 7, 6, back);                          // body
-            pxRect(ctx, -2, -5, 5, 4, chest);                         // speckled chest
-            pxRect(ctx, -1, -4, 1, 1, streak);
-            pxRect(ctx, 1, -3, 1, 1, streak);
-            pxRect(ctx, 0, -2, 1, 1, streak);
-            pxRect(ctx, -3, -11, 7, 5, back);                         // big round head
-            pxRect(ctx, -3, -12, 1, 1, back);                         // ear tufts
-            pxRect(ctx, 3, -12, 1, 1, back);
+            const speckle = (dx, dy) => hash2(Math.round(dx * 4), Math.round(dy * 4), 71) < 0.12 && dy > -1 ? streak : chest;
+            fineDabs(ctx, [[0.5, -3.2, 3.4, round(back, 3.4)], [0.5, -2.6, 2.3, speckle]]);                   // body, speckled chest
+            fineDabs(ctx, [[0.5, -8.6, 3.2, round(back, 3.2)], [-2.1, -11.5, 0.75, back], [3.1, -11.5, 0.75, back]]);   // big round head, ear tufts
             if (b.swivel > 6 && b.swivel < 34) {                      // head turned right round: the back of it
-                pxRect(ctx, -2, -10, 5, 3, mixHex(back, '#000000', 0.15));
+                fineDabs(ctx, [[0.5, -8.4, 2.3, shade(back, -0.12)]]);
             } else {
-                pxRect(ctx, -2, -10, 5, 4, face);                     // facial disc
+                fineDabs(ctx, [[-0.7, -8.5, 1.6, face], [1.7, -8.5, 1.6, face]]);                                 // facial disc
                 if (b.blink > 0) {
-                    pxRect(ctx, -2, -8, 2, 1, streak);
-                    pxRect(ctx, 1, -8, 2, 1, streak);
+                    hd(ctx, -1.5, -8.5, 1.5, 0.5, streak); hd(ctx, 1, -8.5, 1.5, 0.5, streak);
                 } else {
-                    pxRect(ctx, -2, -9, 2, 2, '#111827');             // big dark eyes, with a gleam
-                    pxRect(ctx, 1, -9, 2, 2, '#111827');
-                    pxRect(ctx, -2, -9, 1, 1, '#e5e7eb');
-                    pxRect(ctx, 1, -9, 1, 1, '#e5e7eb');
+                    fineDabs(ctx, [[-0.7, -8.7, 0.9, '#111827'], [1.7, -8.7, 0.9, '#111827']]);                    // big dark eyes, with a gleam
+                    hd(ctx, -1.5, -9.5, 0.5, 0.5, '#e5e7eb'); hd(ctx, 1, -9.5, 0.5, 0.5, '#e5e7eb');
                 }
-                pxRect(ctx, 0, -7, 1, 1, '#e0b04a');                  // beak
+                fineDabs(ctx, [[0.5, -7.4, 0.45, '#e0b04a']]);                                                  // beak
             }
-            pxRect(ctx, -1, 0, 1, 1, '#e0b04a');                      // talons
-            pxRect(ctx, 1, 0, 1, 1, '#e0b04a');
+            fineDabs(ctx, [[-0.6, -0.1, 0.45, '#e0b04a'], [1.6, -0.1, 0.45, '#e0b04a']]);                     // talons
         }
 
         function drawBird() {
@@ -7558,42 +7560,37 @@
             ctx.rect(88, 22, 74, 74);                         // only seen through the window
             ctx.clip();
             ctx.translate(Math.round(q.x), Math.round(q.y));
+            // round shapes (see fineDabs): a bushy tail with a pale fringe, a plump body, a round head
+            const round = (c, r) => (dx, dy) => dy < -r * 0.45 ? shade(c, 0.12) : dy > r * 0.5 ? shade(c, -0.18) : c;
+            const tail = pts => {                                     // the fringe all round, then the tail's own colour within it
+                fineDabs(ctx, pts.map(([x, y, r]) => [x, y, r, k.fringe]));
+                fineDabs(ctx, pts.map(([x, y, r]) => [x + 0.15, y + 0.15, r * 0.66, k.tail]));
+            };
             if (q.phase === 'press') {
                 // Face-on, paws up against the glass, tail fluffed up behind
-                const flick = Math.floor(q.t / 9) % 2, tap = q.t % 50 >= 22 && q.t % 50 < 30 ? 1 : 0;
-                pxRect(ctx, 3, -15 + flick, 4, 11, k.tail);
-                pxRect(ctx, 4, -17 + flick, 4, 3, k.tail);
-                pxRect(ctx, 6, -16 + flick, 2, 10, k.fringe);
-                pxRect(ctx, -3, -7, 7, 7, k.fur);                   // body
-                pxRect(ctx, -2, -6, 5, 6, k.belly);
-                pxRect(ctx, -3, -13, 7, 6, k.fur);                  // head
-                pxRect(ctx, -3, -14, 1, 2, k.dark);                 // ear tufts
-                pxRect(ctx, 3, -14, 1, 2, k.dark);
-                pxRect(ctx, -2, -9, 5, 2, k.belly);                 // cheeks
-                pxRect(ctx, -2, -11, 1, 1, '#111827');              // eyes
-                pxRect(ctx, 2, -11, 1, 1, '#111827');
-                pxRect(ctx, 0, -10, 1, 1, '#3f2a14');               // nose, squashed on the glass
-                pxRect(ctx, -5, -11 + tap, 2, 2, k.dark);           // paws on the glass
-                pxRect(ctx, 4, -11, 2, 2, k.dark);
+                const flick = Math.floor(q.t / 9) % 2, tap = q.t % 50 >= 22 && q.t % 50 < 30 ? 1 : 0, pts = [];
+                for (let n = 0; n <= 12; n++) { const f = n / 12; pts.push([5 + Math.sin(f * 2) * 1.4, -4 - f * 12 + flick * f, 1.2 + Math.sin(f * Math.PI) * 0.8]); }
+                tail(pts);
+                fineDabs(ctx, [[0.5, -3.3, 3.2, round(k.fur, 3.2)], [0.5, -6.4, 2.6, k.fur], [0.5, -3.0, 2.1, k.belly], [0.5, -5.6, 1.5, k.belly]]);   // a pear-shaped body, and its pale front
+                fineDabs(ctx, [[0.5, -10, 3.1, round(k.fur, 3.1)], [-2.3, -13.4, 0.7, k.dark], [3.3, -13.4, 0.7, k.dark],   // head, ear tufts
+                               [-0.8, -8.4, 1.25, k.belly], [1.8, -8.4, 1.25, k.belly]]);                        // cheeks
+                fineDabs(ctx, [[-1.3, -10.9, 0.6, '#111827'], [2.3, -10.9, 0.6, '#111827'], [0.5, -9.4, 0.5, '#3f2a14']]);   // eyes, nose squashed on the glass
+                hd(ctx, -1.5, -11.5, 0.5, 0.5, '#ffffff'); hd(ctx, 2, -11.5, 0.5, 0.5, '#ffffff');
+                fineDabs(ctx, [[-4, -10 + tap, 1, round(k.dark, 1)], [5, -10, 1, round(k.dark, 1)]]);             // paws on the glass
             } else {
                 if (q.facing === -1) ctx.scale(-1, 1);
-                const leg = Math.floor(q.t / 3) % 2;
-                pxRect(ctx, -7, -9, 3, 6, k.tail);                  // big bushy tail curling up behind
-                pxRect(ctx, -6, -11, 3, 3, k.tail);
-                pxRect(ctx, -7, -9, 1, 5, k.fringe);
-                pxRect(ctx, -3, -4, 7, 3, k.fur);                   // body
-                pxRect(ctx, -1, -2, 4, 1, k.belly);
-                pxRect(ctx, 3, -6, 3, 3, k.fur);                    // head
-                pxRect(ctx, 4, -7, 1, 1, k.dark);                   // ear
-                pxRect(ctx, 5, -5, 1, 1, '#111827');                // eye
-                pxRect(ctx, 6, -4, 1, 1, '#3f2a14');
-                if (q.phase === 'nibble') pxRect(ctx, 5, -3, 2, 1, '#e9c46a');   // seeds!
-                pxRect(ctx, -3 + leg, -1, 1, 1, k.dark);            // scampering feet
-                pxRect(ctx, 2 - leg, -1, 1, 1, k.dark);
+                const leg = Math.floor(q.t / 3) % 2, pts = [];
+                for (let n = 0; n <= 12; n++) { const f = n / 12; pts.push([-3.4 - Math.sin(f * 2.2) * 3, -2.4 - f * 8.4, 1.0 + Math.sin(f * Math.PI) * 0.7]); }
+                tail(pts);                                                                                      // big bushy tail curling up behind
+                fineDabs(ctx, [[-2.5 + leg * 0.6, -0.4, 0.5, k.dark], [2.2 - leg * 0.6, -0.4, 0.5, k.dark]]);   // scampering feet
+                fineDabs(ctx, [[-0.6, -2.5, 1.8, round(k.fur, 1.8)], [1.6, -2.7, 1.7, round(k.fur, 1.7)], [0.8, -1.6, 1.0, k.belly],   // body
+                               [4.0, -4.5, 1.5, round(k.fur, 1.5)], [5.3, -4.0, 0.8, round(k.fur, 0.8)], [3.6, -6.3, 0.6, k.dark]]);   // head, snout, ear
+                fineDabs(ctx, [[4.6, -4.9, 0.45, '#111827'], [6.0, -4.1, 0.35, '#3f2a14']]);
+                hd(ctx, 4.5, -5.5, 0.5, 0.5, '#ffffff');
+                if (q.phase === 'nibble') fineDabs(ctx, [[5.6, -2.8, 0.5, '#e9c46a'], [6.3, -2.9, 0.4, '#d9b45a']]);   // seeds!
             }
             ctx.restore();
         }
-
 
         // ------------------------------------------------------------------
         // FRIENDSHIPS: every pair of cats has a bond that grows with cuddles,
@@ -8819,18 +8816,23 @@
                 }
                 ctx.globalAlpha = 1;
             }
-            // The saucer: a glass dome with a little green passenger, a silver hull, running lights
-            pxRect(ctx, x - 3, y - 5, 6, 3, '#a5f3fc');
-            pxRect(ctx, x - 2, y - 6, 4, 1, '#a5f3fc');
-            pxRect(ctx, x - 1, y - 4, 2, 2, '#4ade80');
-            pxRect(ctx, x - 1, y - 4, 1, 1, '#111827');
-            pxRect(ctx, x, y - 4, 1, 1, '#111827');
-            pxRect(ctx, x - 8, y - 2, 16, 3, '#9ca3af');
-            pxRect(ctx, x - 7, y - 2, 14, 1, '#e5e7eb');
-            pxRect(ctx, x - 6, y + 1, 12, 1, '#4b5563');
-            const lights = ['#f87171', '#facc15', '#4ade80', '#60a5fa'];
-            [-6, -2, 2, 6].forEach((lx, i) => pxRect(ctx, x + lx, y, 1, 1, lights[(i + Math.floor(u.t / 6)) % 4]));
             ctx.restore();
+            // The saucer: a glass dome with a little green passenger, a silver hull, running lights
+            // (round shapes, shaded and outlined like everything else that moves)
+            spriteFX(ctx, 125, 80, () => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(88, 22, 74, 74);
+                ctx.clip();
+                fineDabs(ctx, [[x, y - 3.4, 3, (dx, dy) => dx + dy < -2 ? '#e6fdff' : dy > 1.2 ? '#7fd8e8' : '#a5f3fc']]);   // the dome
+                fineDabs(ctx, [[x, y - 3.3, 1.2, '#4ade80'], [x - 0.5, y - 3.6, 0.35, '#111827'], [x + 0.5, y - 3.6, 0.35, '#111827']]);   // the passenger
+                const hull = [];
+                for (let k = -6.4; k <= 6.4; k += 0.4) hull.push([x + k, y - 0.6, 1.6 - Math.abs(k) / 6.4 * 0.5, (dx, dy) => dy < -0.7 ? '#eef0f3' : dy > 0.6 ? '#5b6370' : '#9ca3af']);
+                fineDabs(ctx, hull);
+                const lights = ['#f87171', '#facc15', '#4ade80', '#60a5fa'];
+                fineDabs(ctx, [-5.5, -1.8, 1.8, 5.5].map((lx, i) => [x + lx, y + 0.1, 0.5, lights[(i + Math.floor(u.t / 6)) % 4]]));
+                ctx.restore();
+            });
         }
 
         function updateNightVisitors() {
@@ -11577,17 +11579,22 @@
             P.rect(0, 130, W, 1 / r, '#93644c');
             woodFill(P, 0, 132, W, 2, '#341f16', 33, -0.12, 0.06, 7);
             P.rect(0, 134, W, 0.5, '#24150e'); P.rect(0, 134.5, W, 0.5, '#120a06');
-            // Mouse holes, nibbled into the skirting: an arch with a lit rim, dark inside and darker still at the back
+            // Mouse holes, gnawed into the skirting: an arch with a chewed rim (lit where it faces the
+            // light, with fibres of bare wood), dark inside and darker still at the back, its floor
+            // catching a little light
             MOUSE_HOLES.forEach(h => {
                 const cx = h.x + 0.5;
                 P.fine(h.x - 6, 124, 13, 11, (fx, fy) => {
                     const dx = (fx + 0.5) / r - cx, y = (fy + 0.5) / r;
-                    const nib = (hash2(Math.floor(fx / hr), Math.floor(fy / r), 41) - 0.5) * 0.35;   // a slightly ragged, gnawed edge
-                    const d = y > 129.5 ? Math.abs(dx) / 5.2 : Math.hypot(dx / 5.2, (y - 129.5) / 5);
+                    const arch = y < 129.5, along = arch ? Math.atan2(y - 129.5, dx) * 3 : (y - 129.5) * 0.6 + (dx < 0 ? 0 : 5);   // where round the edge
+                    const nib = (valueNoise(along * 2 + h.x, 0.5, 41) - 0.5) * 0.24 - (hash2(Math.floor(along * 9), h.x, 43) < 0.12 ? 0.05 : 0);   // gnawed, with the odd bite out
+                    const d = arch ? Math.hypot(dx / 5.2, (y - 129.5) / 5) : Math.abs(dx) / 5.2;
                     if (d > 1.12 + nib) return null;
-                    if (d > 0.98 + nib) return dx < 0 && y < 131 ? '#7a5240' : '#4a2f22';   // the rim, where the wood's chewed through
-                    if (d > 0.86 + nib) return '#21130c';
-                    return d > 0.6 ? '#140b07' : '#070403';
+                    const lit = dx < 0 && y < 131;
+                    if (d > 0.98 + nib) return hash2(fx, fy, 44) < 0.22 ? (lit ? '#a07058' : '#5e3e2e') : lit ? '#8a5d48' : '#4a2f22';   // the rim, bare wood with fibres
+                    if (d > 0.9 + nib) return lit ? '#2e1b12' : '#21130c';
+                    if (y > 133.6 && d < 0.8) return d < 0.45 ? '#120a06' : '#1c100a';               // the floor of the tunnel
+                    return d > 0.62 ? '#140b07' : '#070403';
                 });
             });
         }
@@ -12595,44 +12602,76 @@
             });
         }
 
-        // Food and water bowls: glazed, with a glint, and kibble you can almost hear crunch
-        function drawBowl(x, y, glaze) {
-            const [d2, d1, b, l1, l2] = ramp(glaze, [-0.55, -0.28, 0, 0.22, 0.45]);
-            pxRect(ctx, x, y + 3, 12, 1, d2);
-            pxRect(ctx, x, y, 12, 3, b);
-            pxRect(ctx, x, y, 1, 3, l1); pxRect(ctx, x + 1, y + 1, 1, 1, l2);
-            pxRect(ctx, x + 10, y, 2, 3, d1);
-            hd(ctx, x + 1, y + 1.5, 9, 0.5, shade(glaze, 0.1)); hd(ctx, x + 1.5, y + 2.5, 8.5, 0.5, shade(glaze, -0.12));   // the curve of the bowl
-            hd(ctx, x + 1, y + 0.5, 0.5, 2, l2); hd(ctx, x + 11.5, y, 0.5, 3, d2);
-            pxRect(ctx, x + 1, y - 1, 10, 1, l1);                                  // rim
-            hd(ctx, x + 1, y - 1, 10, 0.5, l2); hd(ctx, x + 2, y - 1, 2, 0.5, '#ffffff');
-            pxRect(ctx, x - 1, y, 1, 3, shade(glaze, -0.75)); pxRect(ctx, x + 12, y, 1, 3, shade(glaze, -0.75));
-            hd(ctx, x - 0.5, y - 0.5, 0.5, 0.5, shade(glaze, -0.75)); hd(ctx, x + 12, y - 0.5, 0.5, 0.5, shade(glaze, -0.75));
-            pxRect(ctx, x + 1, y + 4, 10, 1, 'rgba(10, 14, 22, 0.35)');
+        // Food and water bowls: glazed ceramic seen a little from above, painted once per glaze in
+        // quarter pixels (a rim round the opening, a rounded body with a glint of glaze, an unglazed
+        // foot and a soft shadow on the mat). (x, y) is the top left of the body, as it always was.
+        const bowlArts = {};
+        function bowlArt(glaze) {
+            if (bowlArts[glaze]) return bowlArts[glaze];
+            const P = painter(16, 8, ROOM_RES), r = P.res;                       // covers x - 2 .. x + 14, y - 3 .. y + 5
+            const R = ramp(glaze, [-0.62, -0.42, -0.22, 0, 0.16, 0.32, 0.5]);
+            const at = (fx, fy) => [(fx + 0.5) / r - 2, (fy + 0.5) / r - 3];
+            const shadow = rgbOf('#0a0e16');
+            for (let fy = 0; fy < P.fh; fy++) for (let fx = 0; fx < P.fw; fx++) {   // the shadow, soft at its edge
+                const [x, y] = at(fx, fy), e = ((x - 6.6) / 6.6) ** 2 + ((y - 3.7) / 0.95) ** 2;
+                if (e < 1) P.fput(fx, fy, shadow, e < 0.6 ? 0.34 : 0.2);
+            }
+            P.fine(-2, -3, 16, 8, (fx, fy) => {
+                const [x, y] = at(fx, fy);
+                // the rim and the opening: ellipses, seen from a little above
+                const er = ((x - 6) / 6.4) ** 2 + ((y + 0.6) / 1.05) ** 2, eo = ((x - 6) / 5.3) ** 2 + ((y + 0.62) / 0.62) ** 2;
+                if (eo <= 1) return y < -0.62 ? R[1] : R[0];                          // inside: the far wall a little lit, the near one in shadow
+                if (er <= 1) {
+                    const u = (x - 6) / 6.4, top = y < -0.6;
+                    return top ? (u < -0.3 ? R[6] : u < 0.5 ? R[5] : R[4]) : (u < -0.5 ? R[5] : u < 0.55 ? R[4] : R[3]);
+                }
+                // the body, curving in towards a rounded foot
+                if (y < -0.5 || y > 3.55) return null;
+                const t = (y + 0.5) / 4, hw = 6.3 - 1.3 * t * t - (y > 3.1 ? (y - 3.1) * 1.6 : 0), u = (x - 6) / hw;
+                if (Math.abs(u) > 1) return null;
+                if (y > 3.05) return u < -0.4 ? shade(glaze, -0.35) : shade(glaze, -0.5);       // the unglazed foot
+                if (u > -0.74 && u < -0.56 && t > 0.08 && t < 0.62) return R[6];                // a glint on the glaze
+                return rampAt(R, roundLight(u) * 0.95 + 0.1 - t * 0.28, fx, fy);
+            });
+            P.outline(-0.75);
+            return (bowlArts[glaze] = P.toCanvas());
         }
         function drawBowls() {
             const fx = bowls.foodX, fy = bowls.foodY, wx = bowls.waterX, wy = bowls.waterY;
-            drawBowl(fx, fy, '#f59e0b');
-            pxRect(ctx, fx + 1, fy, 10, 1, '#5a2a0a');                              // inside the bowl
-            if (bowls.foodLevel > 0.05) {
-                const fw = Math.ceil(bowls.foodLevel * 16);
-                for (let i = 0; i < fw; i++) {                                   // kibble, a little round bit at a time
-                    const kx = fx + 2 + i * 0.5, top = (i % 3 === 1) ? fy - 1.5 : fy - 1;
-                    hd(ctx, kx, top, 0.5, fy - top, i % 2 ? '#8a4a16' : '#a45c20');
-                    if (i % 3 === 1) hd(ctx, kx, top, 0.5, 0.5, '#d89448');
+            blit(ctx, bowlArt('#f59e0b'), fx - 2, fy - 3);
+            // kibble: little round biscuits heaped in the opening, the heap sinking as it's eaten
+            const L = bowls.foodLevel;
+            if (L > 0.05) {
+                const n = Math.round(L * 30), bits = [];
+                for (let k = 0; k < n; k++) {
+                    const px = 1.3 + hash2(k, 1, 70) * 9.2, edge = 1 - ((px + 0.375 - 6) / 5.3) ** 2;
+                    const py = -0.75 + (hash2(k, 2, 70) - 0.5) * 0.8 * Math.sqrt(Math.max(0, edge)) - hash2(k, 3, 70) * L * 1.9 * Math.max(0, edge);
+                    bits.push([px, py, k]);
                 }
-                if (bowls.foodLevel > 0.5) {
-                    hd(ctx, fx + 4, fy - 2, 4, 1, '#9a5420'); hd(ctx, fx + 4.5, fy - 2, 1, 0.5, '#d89448'); hd(ctx, fx + 6.5, fy - 2, 0.5, 0.5, '#c8803a');
-                }
+                bits.sort((a, b) => a[1] - b[1]).forEach(([px, py, k]) => {
+                    const col = ['#8a4a16', '#a45c20', '#9a5420'][k % 3];
+                    qd(fx + px, fy + py, 0.75, 0.5, col);
+                    qd(fx + px, fy + py, 0.5, 0.25, '#d89448');                         // lit on top
+                    qd(fx + px + 0.5, fy + py + 0.25, 0.25, 0.25, '#6a3410');           // shaded underneath
+                });
             }
-            drawBowl(wx, wy, '#3b82f6');
-            pxRect(ctx, wx + 1, wy, 10, 1, '#1e3a8a');
-            if (bowls.waterLevel > 0.05) {
-                pxRect(ctx, wx + 2, wy - 1, 8, 1, '#38bdf8');
-                pxRect(ctx, wx + 2, wy, 8, 1, '#2a8fd0');
-                hd(ctx, wx + 2, wy - 1, 8, 0.5, '#7dd3fc');
-                const r = (globalTick / 40) % 3;                                  // a glint, rippling
-                hd(ctx, wx + 3 + r, wy - 1, 2, 0.5, '#e6f7ff'); hd(ctx, wx + 6.5 - r * 0.5, wy - 0.5, 1, 0.5, '#bae6fd');
+            blit(ctx, bowlArt('#3b82f6'), wx - 2, wy - 3);
+            // water: a surface sitting in the opening, lower as it's drunk, with a ripple of light across it
+            const Wl = bowls.waterLevel;
+            if (Wl > 0.05) {
+                const cy = -0.62 + (1 - Wl) * 0.25, rx = 5.1 - (1 - Wl) * 0.6, ry = 0.5, Q = 1 / ROOM_RES;
+                const glint = (globalTick / 40) % 3;
+                for (let y = cy - ry; y < cy + ry; y += Q) {
+                    const half = rx * Math.sqrt(Math.max(0, 1 - ((y + Q / 2 - cy) / ry) ** 2));
+                    if (half < Q) continue;
+                    const x0 = 6 - half, top = y < cy - ry * 0.3;
+                    qd(wx + x0, wy + y, half * 2, Q, top ? '#5cc8f5' : '#2a8fd0');
+                    qd(wx + x0, wy + y, Q * 2, Q, top ? '#7dd3fc' : '#38bdf8');                      // lit along its near-left edge
+                    if (Math.abs(y - cy) < Q) {
+                        qd(wx + 2.5 + glint, wy + y, 2, Q, '#e6f7ff');                                  // the glint, rippling
+                        qd(wx + 6.5 - glint * 0.5, wy + y + Q, 1, Q, '#bae6fd');
+                    }
+                }
             }
         }
 
@@ -12761,22 +12800,22 @@
             if (m.facing === -1) c.scale(-1, 1);
             const moving = Math.hypot(m.vx, m.vy) > 0.2;
             const step = moving ? Math.floor(m.t / 3) % 2 : 0;
-            const wig = Math.floor(m.t / 5) % 2;
-            pxRect(c, -6, -2 + wig, 3, 1, '#f9a8d4');              // tail
-            pxRect(c, -8, -3 + wig, 2, 1, '#f9a8d4');
-            pxRect(c, -3, -3, 6, 3, '#9ca3af');                   // body
-            pxRect(c, -2, -1, 4, 1, '#d1d5db');                   // belly
-            pxRect(c, 2, -3, 3, 2, '#9ca3af');                    // head
-            pxRect(c, 5, -2, 1, 1, '#f472b6');                    // nose
-            pxRect(c, 1, -5, 2, 2, '#9ca3af');                    // ear
-            pxRect(c, 1, -4, 1, 1, '#f9a8d4');
-            pxRect(c, 3, -3, 1, 1, '#111827');                    // eye
-            pxRect(c, -2 + step, 0, 1, 1, '#f9a8d4');             // scurrying feet
-            pxRect(c, 1 - step, 0, 1, 1, '#f9a8d4');
+            // built from round dabs (see fineDabs), so it's all soft curves: a thin tail that curls
+            // and wiggles, a plump body, a round head with a pointed snout, a big round ear, little feet
+            const grey = (r, y0) => (dx, dy) => dy + y0 < -2.9 ? '#c4c9d1' : dy + y0 > -0.9 ? '#7d8592' : '#9ca3af';   // (lit along its back, shaded underneath)
+            const tail = [];
+            for (let k = 0; k <= 20; k++) {
+                const f = k / 20, wig = Math.sin(f * 4.5 + m.t * (moving ? 0.5 : 0.18)) * 0.7 * f;
+                tail.push([-2.6 - f * 5.8, -1.0 - Math.sin(f * 2.4) * 1.3 + wig, 0.3 - f * 0.12, '#f4a3cb']);
+            }
+            fineDabs(c, tail);
+            fineDabs(c, [[-1.6 + step * 0.7, -0.35, 0.42, '#f9a8d4'], [1.3 - step * 0.7, -0.35, 0.42, '#f9a8d4']]);   // scurrying feet
+            fineDabs(c, [[-1.1, -1.7, 1.75, grey(1.75, -1.7)], [0.7, -1.85, 1.7, grey(1.7, -1.85)], [-0.1, -0.95, 1.0, '#d1d5db'],      // body and belly
+                         [2.9, -2.05, 1.4, grey(1.4, -2.05)], [4.25, -1.75, 0.8, grey(0.8, -1.75)],                                     // head and snout
+                         [2.0, -3.65, 1.0, grey(1.0, -3.65)], [2.15, -3.55, 0.55, '#f9a8d4'], [5.05, -1.85, 0.38, '#f472b6']]);         // ear and nose
             if (m.phase === 'frozen') pxRect(c, 4, -7, 1, 1, '#fde047'); // eek
-            hd(c, 3.5, -3, 0.5, 0.5, '#ffffff');                                       // a bright little eye
-            hd(c, 5.5, -2.5, 1, 0.5, 'rgba(255, 255, 255, 0.55)'); hd(c, 5.5, -1.5, 1, 0.5, 'rgba(255, 255, 255, 0.55)');   // whiskers
-            hd(c, -2.5, -3, 4.5, 0.5, '#b8bec8');                                        // soft fur along its back
+            hd(c, 3.5, -2.5, 0.5, 0.75, '#111827'); hd(c, 3.5, -2.5, 0.5, 0.25, '#ffffff');   // a bright little eye
+            hd(c, 5.5, -2.5, 1.5, 0.5, 'rgba(255, 255, 255, 0.55)'); hd(c, 5.5, -1.5, 1.5, 0.5, 'rgba(255, 255, 255, 0.55)');   // whiskers
             c.restore();
         }
 
