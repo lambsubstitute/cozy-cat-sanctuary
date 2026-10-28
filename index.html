@@ -6443,15 +6443,18 @@
             blit(ctx, art.cv, pt.x - 1, pt.y - 3);
         }
         function paintPortrait(cfg, bg) {
-            const pal = cfg.palette, P = painter(19, 25), X = 1, Y = 3, FW = PORTRAIT_W, FH = PORTRAIT_H;
+            const pal = cfg.palette, P = painter(19, 25, ROOM_RES), r = P.res, hr = r / 2, X = 1, Y = 3, FW = PORTRAIT_W, FH = PORTRAIT_H;
             // a soft shadow on the wall, the picture wire and its brass nail
             P.rect(X + 1, Y + FH, FW, 1, '#100804', 0.3); P.rect(X + FW, Y + 1, 1, FH, '#100804', 0.3);
             P.line(X + 8, Y - 2.2, X + 3.5, Y, '#7a5a3a'); P.line(X + 8, Y - 2.2, X + 12.5, Y, '#7a5a3a');
-            P.fmap(X + 7.5, Y - 3, ['hb', 'bd'], { h: '#f0d48a', b: '#a8822e', d: '#5a3a14' });
+            P.fine(X + 7.5, Y - 3, 1, 1, (fx, fy) => {                                       // a round brass nail head
+                const dx = (fx + 0.5) / r - X - 8, dy = (fy + 0.5) / r - Y + 2.5, d = Math.hypot(dx, dy);
+                return d > 0.55 ? null : dx + dy < -0.25 ? '#f0d48a' : dx + dy > 0.3 ? '#5a3a14' : '#a8822e';
+            });
             // the frame: a dark outer edge, a gilt moulding lit along the top and left, a row of beads, a dark slip
-            const F0 = X * 2, G0 = Y * 2, FW2 = FW * 2, FH2 = FH * 2;
+            const F0 = X * r, G0 = Y * r, FW2 = FW * 2, FH2 = FH * 2;                   // (the frame is worked out in half pixels)
             P.fine(X, Y, FW, FH, (fx, fy) => {
-                const i = fx - F0, j = fy - G0, e = Math.min(i, FW2 - 1 - i, j, FH2 - 1 - j);
+                const i = Math.floor((fx - F0) / hr), j = Math.floor((fy - G0) / hr), e = Math.min(i, FW2 - 1 - i, j, FH2 - 1 - j);
                 if (e > 3) return null;
                 const lit = Math.min(i, j) <= Math.min(FW2 - 1 - i, FH2 - 1 - j);
                 const corner = Math.min(i, FW2 - 1 - i) < 4 && Math.min(j, FH2 - 1 - j) < 4;
@@ -6467,10 +6470,10 @@
             // the painting: a studio backdrop, lighter towards the top left, with visible brushwork
             const C0x = X + 2, C0y = Y + 2;
             const BG = [shade(bg, -0.35), shade(bg, -0.15), bg, blendColors(bg, '#ffffff', 0.14), blendColors(bg, '#ffffff', 0.26)];
-            const at = (fx, fy) => [(fx + 0.5) / 2 - C0x, (fy + 0.5) / 2 - C0y];        // fine pixel -> canvas position (12 x 15)
+            const at = (fx, fy) => [(fx + 0.5) / r - C0x, (fy + 0.5) / r - C0y];        // fine pixel -> canvas position (12 x 15)
             P.fine(C0x, C0y, 12, 15, (fx, fy) => {
                 const [u, v] = at(fx, fy);
-                const stroke = hash2((fx + fy) >> 1, (fx - fy) >> 2, 51) * 0.16 - 0.08;
+                const stroke = hash2(Math.floor((fx + fy) / hr / 2), Math.floor((fx - fy) / hr / 4), 51) * 0.16 - 0.08;
                 return rampAt(BG, 0.78 - u * 0.03 - v * 0.04 + stroke, fx, fy);
             });
             const BASE = ramp(pal.base, [-0.45, -0.25, -0.08, 0.08, 0.24]);
@@ -6523,11 +6526,11 @@
                     if (Math.abs(u - ecx) < 0.26) return '#120a06';                            // the pupil
                     return v < 6.6 ? shade(pal.eyes, -0.25) : v > 7.3 ? shade(pal.eyes, 0.15) : pal.eyes;
                 });
-                P.dot(C0x + ecx - 0.6, C0y + 6.6, '#ffffff');                                      // the glint
+                P.rect(C0x + ecx - 0.75, C0y + 6.5, 0.5, 0.5, '#ffffff');                           // the glint
             });
             // nose, mouth and whiskers
-            P.fmap(C0x + 5, C0y + 9, ['hnnd', '.nd.'], { h: blendColors(pal.nose, '#ffffff', 0.35), n: pal.nose, d: shade(pal.nose, -0.3) });
-            P.fmap(C0x + 4.75, C0y + 10, ['..k..', 'kk.kk'], { k: shade(pal.base, -0.55) });
+            P.hmap(C0x + 5, C0y + 9, ['hnnd', '.nd.'], { h: blendColors(pal.nose, '#ffffff', 0.35), n: pal.nose, d: shade(pal.nose, -0.3) });
+            P.hmap(C0x + 4.75, C0y + 10, ['..k..', 'kk.kk'], { k: shade(pal.base, -0.55) });
             [[9.6, -0.4], [10.2, 0.3]].forEach(([wy, dy]) => {
                 P.line(C0x + 3.6, C0y + wy, C0x + 0.4, C0y + wy + dy - 0.2, '#ffffff', 0.55);
                 P.line(C0x + 8.4, C0y + wy, C0x + 11.6, C0y + wy + dy - 0.2, '#ffffff', 0.55);
@@ -6537,7 +6540,7 @@
             P.tint(C0x + 11, C0y, 1, 15, -0.18, 0.6);
             // a little brass name plate under the frame
             P.fine(X + 4, Y + FH + 1, 8, 2, (fx, fy) => {
-                const i = fx - (X + 4) * 2, j = fy - (Y + FH + 1) * 2;
+                const i = Math.floor((fx - (X + 4) * r) / hr), j = Math.floor((fy - (Y + FH + 1) * r) / hr);
                 if (i === 0 || j === 0 || i === 15 || j === 3) return '#3a2410';
                 if (j === 2 && i > 3 && i < 12) return '#8a6418';                             // the engraving
                 return j === 1 ? '#f6d672' : '#c99a2e';
@@ -9345,50 +9348,76 @@
             if (!cv) { cv = make(); SYMBOL_ART.set(key, cv); }
             return cv;
         }
-        // rows: one character per fine pixel, looked up in pal (anything else is left clear).
-        // opt: ink (the outline's colour; without it, a deep shade of whatever it's next to),
-        // outline (that shade), light and dark (the edge shading), flat (characters left
-        // unshaded: eyes, glints), late (characters painted after the outline, unoutlined: glows)
+        // rows: one character per fine pixel (half a room pixel), looked up in pal (anything else
+        // is left clear). opt: ink (the outline's colour; without it, a deep shade of whatever it's
+        // next to), outline (that shade), light and dark (the edge shading), flat (characters left
+        // unshaded: eyes, glints), late (characters painted after the outline, unoutlined: glows).
+        // The bitmap is blown up to the room canvas's quarter pixels the way EPX does it, rounding
+        // off every step in its diagonals and curves, and finished at that resolution.
         function symbolArt(key, rows, pal, opt = {}) {
             return symbolCached(key, () => {
                 const { ink = null, outline = -0.8, light = 0.35, dark = -0.28, flat = '', late = '' } = opt;
                 const fw = Math.max(...rows.map(r => r.length)) + 2, fh = rows.length + 2;
-                const P = painter(fw / RES, fh / RES), keep = new Uint8Array(fw * fh);
+                const P = painter(fw / RES, fh / RES), keep = new Uint8Array(fw * fh), glow = painter(fw / RES, fh / RES);
                 rows.forEach((row, j) => {
                     for (let i = 0; i < row.length; i++) {
                         const ch = row[i];
-                        if (!pal[ch] || late.includes(ch)) continue;
+                        if (!pal[ch]) continue;
+                        if (late.includes(ch)) { glow.fset(i + 1, j + 1, pal[ch]); continue; }
                         P.fset(i + 1, j + 1, pal[ch]);
                         if (flat.includes(ch)) keep[(j + 1) * fw + i + 1] = 1;
                     }
                 });
-                symbolFinish(P, keep, ink, outline, light, dark);
-                rows.forEach((row, j) => {
-                    for (let i = 0; i < row.length; i++) if (late.includes(row[i]) && pal[row[i]]) P.fset(i + 1, j + 1, pal[row[i]]);
-                });
-                return P.toCanvas();
+                const [Q, keepQ] = symbolFiner(P, keep), G = symbolFiner(glow)[0];
+                symbolFinish(Q, keepQ, ink, outline, light, dark);
+                for (let p = 0; p < Q.fw * Q.fh; p++) if (G.d[p * 4 + 3]) Q.fput(p % Q.fw, Math.floor(p / Q.fw), [G.d[p * 4], G.d[p * 4 + 1], G.d[p * 4 + 2]], 1);
+                return Q.toCanvas();
             });
         }
-        // Light where a fine pixel's top or left edge is open, shade where its bottom or right
-        // one is (a stroke one pixel thin is left alone), then the outline round the lot
+        // A symbol painted on the half-pixel grid, blown up to ROOM_RES the way EPX (Scale2x) does
+        // it: each fine pixel becomes four, and a corner takes its neighbours' colour where they
+        // agree, so diagonals and curves come out smooth. keep (flat pixels) is just doubled.
+        function symbolFiner(P, keep = null) {
+            const k = ROOM_RES / P.res;
+            if (k === 1) return [P, keep];
+            const Q = painter(P.w, P.h, ROOM_RES), keepQ = keep && new Uint8Array(Q.fw * Q.fh), d = P.d, W = P.fw, Hh = P.fh;
+            const at = (x, y) => x < 0 || y < 0 || x >= W || y >= Hh ? 0 : ((d[(y * W + x) * 4 + 3] << 24) | (d[(y * W + x) * 4 + 2] << 16) | (d[(y * W + x) * 4 + 1] << 8) | d[(y * W + x) * 4]) >>> 0;
+            for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+                const p = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+                const cs = [C === A && C !== D && A !== B ? A : p, A === B && A !== C && B !== D ? B : p,
+                            D === C && D !== B && C !== A ? C : p, B === D && B !== A && D !== C ? D : p];
+                cs.forEach((v, n) => {
+                    const fx = x * 2 + (n & 1), fy = y * 2 + (n >> 1);
+                    if (v >>> 24) Q.fput(fx, fy, [v & 255, (v >>> 8) & 255, (v >>> 16) & 255], (v >>> 24) / 255);
+                    if (keepQ && keep[y * W + x]) keepQ[fy * Q.fw + fx] = 1;
+                });
+            }
+            return [Q, keepQ];
+        }
+        // Light along the top and left of every shape, shade along its bottom and right (a band
+        // half a room pixel deep; a stroke that thin is left alone), then the outline round the lot
         function symbolFinish(P, keep, ink, outline = -0.8, light = 0.35, dark = -0.28) {
-            const { fw, fh } = P, on = P.fhas, marks = [];
+            const { fw, fh } = P, on = P.fhas, marks = [], k = Math.max(1, P.res / 2);
+            const open = (x, y, dx, dy) => { for (let n = 1; n <= k; n++) if (!on(x + dx * n, y + dy * n)) return 1; return 0; };
             for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
                 if (!on(x, y) || (keep && keep[y * fw + x])) continue;
-                const s = (on(x, y - 1) ? 0 : 1) - (on(x, y + 1) ? 0 : 1) + 0.6 * ((on(x - 1, y) ? 0 : 1) - (on(x + 1, y) ? 0 : 1));
+                const s = open(x, y, 0, -1) - open(x, y, 0, 1) + 0.6 * (open(x, y, -1, 0) - open(x, y, 1, 0));
                 if (s > 0.5) marks.push([x, y, light]);
                 else if (s < -0.5) marks.push([x, y, dark]);
             }
             if (light || dark) marks.forEach(([x, y, a]) => P.fshade(x, y, a));
             if (!ink) { P.outline(outline); return; }
-            const ring = [];
-            for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++)
-                if (!on(x, y) && (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1))) ring.push([x, y]);
-            ring.forEach(([x, y]) => P.fset(x, y, ink));
+            for (let pass = 0; pass < k; pass++) {                                   // (half a room pixel thick)
+                const ring = [];
+                for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++)
+                    if (!on(x, y) && (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1))) ring.push([x, y]);
+                ring.forEach(([x, y]) => P.fset(x, y, ink));
+            }
         }
         // Copy a symbol in, centred on (cx, cy), on the fine grid
         function drawSymbol(cv, cx, cy) {
-            blit(ctx, cv, Math.round((cx - cv.width / (2 * RES)) * RES) / RES, Math.round((cy - cv.height / (2 * RES)) * RES) / RES);
+            const r = cv.res || RES;
+            blit(ctx, cv, Math.round((cx - cv.width / (2 * r)) * RES) / RES, Math.round((cy - cv.height / (2 * r)) * RES) / RES);
         }
 
         // ---- The ones that float up ----
@@ -9860,23 +9889,26 @@
         function speechBubbleArt(small) {
             return symbolCached(small ? 'bubble:pop' : 'bubble', () => {
                 const bw = small ? 14 : 24, bh = small ? 11 : 20, corner = small ? [2, 1] : [3, 1, 1], tail = small ? [4, 2] : [6, 4, 2];
-                const P = painter((bw + 2) / RES, (bh + tail.length + 2) / RES);
+                const P0 = painter((bw + 2) / RES, (bh + tail.length + 2) / RES);
                 const paper = '#fdf6e3', under = '#eadfc4';
                 for (let j = 0; j < bh; j++) {
                     const inset = corner[Math.min(j, bh - 1 - j)] || 0;
-                    for (let i = inset; i < bw - inset; i++) P.fset(1 + i, 1 + j, paper);
+                    for (let i = inset; i < bw - inset; i++) P0.fset(1 + i, 1 + j, paper);
                 }
-                tail.forEach((tw, k) => { for (let i = 0; i < tw; i++) P.fset(1 + (bw - tw) / 2 + i, 1 + bh + k, paper); });
+                tail.forEach((tw, k) => { for (let i = 0; i < tw; i++) P0.fset(1 + (bw - tw) / 2 + i, 1 + bh + k, paper); });
+                const P = symbolFiner(P0)[0];                                     // (rounded off at quarter pixels)
                 bubbleShade(P, under);
-                if (!small) [[3, 2], [4, 2], [5, 2], [2, 3], [2, 4]].forEach(([x, y]) => P.fset(x, y, '#ffffff'));
+                if (!small) [[3, 2], [4, 2], [5, 2], [2, 3], [2, 4]].forEach(([x, y]) => P.rect(x / RES, y / RES, 1 / RES, 1 / RES, '#ffffff'));
                 return P.toCanvas();
             });
         }
-        // Shade the undersides (two fine pixels deep) and right side of a bubble or cloud, then outline it in ink
+        // Shade the undersides (a room pixel deep) and right side of a bubble or cloud, then outline it in ink
         function bubbleShade(P, under, ink = '#1e140f') {
-            const on = P.fhas, marks = [];
+            const on = P.fhas, marks = [], k = Math.max(1, P.res / 2);
+            const below = (x, y) => { for (let n = 1; n <= 2 * k; n++) if (!on(x, y + n)) return true; return false; };
+            const right = (x, y) => { for (let n = 1; n <= k; n++) if (!on(x + n, y)) return true; return false; };
             for (let y = 0; y < P.fh; y++) for (let x = 0; x < P.fw; x++)
-                if (on(x, y) && (!on(x, y + 1) || !on(x, y + 2) || !on(x + 1, y))) marks.push([x, y]);
+                if (on(x, y) && (below(x, y) || right(x, y))) marks.push([x, y]);
             marks.forEach(([x, y]) => P.fset(x, y, under));
             symbolFinish(P, null, ink, 0, 0, 0);
         }
@@ -9899,10 +9931,10 @@
                 const ink = nightmare ? '#2a2238' : '#4c3f6b', paper = nightmare ? '#cfcbe0' : '#f5f3ff';
                 const shapes = part === 'cloud' ? DREAM_CLOUD : part === 'big' ? [[3.5, 3.5, 2.6, 2.6]] : [[2, 2, 1.2, 1.2]];
                 const fw = part === 'cloud' ? 37 : part === 'big' ? 7 : 4, fh = part === 'cloud' ? 28 : fw;
-                const P = painter(fw / RES, fh / RES);
-                P.fine(0, 0, fw / RES, fh / RES, (fx, fy) => shapes.some(([cx, cy, rx, ry]) => ((fx + 0.5 - cx) / rx) ** 2 + ((fy + 0.5 - cy) / ry) ** 2 <= 1) ? paper : null);
+                const P = painter(fw / RES, fh / RES, ROOM_RES), u = RES / ROOM_RES;   // (the shapes are in half pixels, traced in quarters)
+                P.fine(0, 0, fw / RES, fh / RES, (fx, fy) => shapes.some(([cx, cy, rx, ry]) => (((fx + 0.5) * u - cx) / rx) ** 2 + (((fy + 0.5) * u - cy) / ry) ** 2 <= 1) ? paper : null);
                 bubbleShade(P, shade(paper, -0.12), ink);
-                if (part !== 'small') P.fset(part === 'cloud' ? 12 : 2, part === 'cloud' ? 5 : 2, '#ffffff');
+                if (part !== 'small') P.rect((part === 'cloud' ? 12 : 2) / RES, (part === 'cloud' ? 5 : 2) / RES, 1 / RES, 1 / RES, '#ffffff');
                 return P.toCanvas();
             });
         }
@@ -10082,16 +10114,15 @@
         function drawToolCursor() {
             if (!pointer.inside || (tool !== 'treat' && tool !== 'brush')) return;
             const x = Math.round(pointer.x), y = Math.round(pointer.y);
-            if (tool === 'treat') {
-                pxRect(ctx, x - 3, y - 3, 7, 4, '#1e140f');
-                drawTreat({ x, y: y + 1 });
-                return;
-            }
+            // (shaded, rounded and outlined like everything else that moves)
+            if (tool === 'treat') { spriteFX(ctx, x, y, () => drawTreat({ x, y: y + 1 }), { outline: -0.95 }); return; }
             const w = pointer.brushCat ? (Math.floor(globalTick / 3) % 2) : 0;
-            pxRect(ctx, x + 2 + w, y - 5, 6, 2, '#7c2d12');                // handle
-            pxRect(ctx, x - 4 + w, y - 3, 8, 3, '#1e140f');                // outline
-            pxRect(ctx, x - 3 + w, y - 3, 6, 2, '#d97706');                // wooden back
-            pxRect(ctx, x - 3 + w, y - 1, 6, 1, '#f5f5f4');                // bristles
+            spriteFX(ctx, x, y, () => {
+                pxRect(ctx, x + 2 + w, y - 5, 6, 2, '#7c2d12');                // handle
+                pxRect(ctx, x - 3 + w, y - 3, 6, 2, '#d97706');                // wooden back
+                pxRect(ctx, x - 3 + w, y - 1, 6, 1, '#f5f5f4');                // bristles
+                for (let i = 0; i < 6; i++) hd(ctx, x - 3 + w + i + 0.5, y - 0.5, 0.5, 0.5, '#d6d3d1');   // between the tufts
+            }, { outline: -0.95 });
         }
 
         // ---- Catnip ----
@@ -10277,7 +10308,7 @@
                 if (d < 5.1) col = '#cdb466';                                // the soft edge of the shadow
                 M.fset(i, j, col);
             }));
-            return M;
+            return symbolFiner(M)[0];
         }
 
         function drawClouds(o, winX, winY, winW, dark) {
@@ -10516,14 +10547,14 @@
         function drawFrost(winX, winY, winW, winH) {
             if (!frostArt) {
                 // feathery ice, thickest in the corners, with a sparkle of crystals in it
-                const F = painter(W, H);
+                const F = painter(W, H, ROOM_RES), k = F.res / RES;                       // (worked out in half pixels, drawn in quarters)
                 WIN_PANES.forEach(([x, y, w, h]) => {
                     [[x, 1], [x + w, -1]].forEach(([cx, dir]) => {
-                        const by = (y + h) * RES, bx = cx * RES;
-                        for (let dy = 0; dy < 24; dy++) for (let dx = 0; dx < 24; dx++) {
+                        const by = (y + h) * F.res, bx = cx * F.res;
+                        for (let dy = 0; dy < 24 * k; dy++) for (let dx = 0; dx < 24 * k; dx++) {
                             const fx = dir > 0 ? bx + dx : bx - 1 - dx, fy = by - 1 - dy;
                             const ang = Math.atan2(dy, dx), reach = 9 + 7 * hash2(Math.floor(ang * 9), cx, 81) + 3 * Math.sin(ang * 14);
-                            const r = Math.hypot(dx, dy * 1.15), t = 1 - r / reach;
+                            const r = Math.hypot(dx, dy * 1.15) / k, t = 1 - r / reach;
                             if (t <= 0) continue;
                             const n = hash2(fx, fy, 82);
                             if (n > t * 1.6) continue;
@@ -10613,7 +10644,7 @@
         const TREE_BAUBLES = [[199, 107, '#dc2626'], [196, 115, '#facc15'], [204, 119, '#3b82f6'], [193, 123, '#e5e7eb'], [206, 126, '#dc2626']];
         let treeArt = null;
         function paintChristmasTree() {
-            const S = painter(36, 52), ox = 183, oy = 92;
+            const S = painter(36, 52, ROOM_RES), ox = 183, oy = 92;           // (rounded off in quarter pixels: see smooth)
             const q = (x, y) => [x - ox, y - oy];
             const G = ramp('#15803d', [-0.6, -0.4, -0.2, 0, 0.18, 0.34]);
             const cx = 200;
@@ -12390,15 +12421,15 @@
         let glassArt = null;
         function drawGlass() {
             if (!glassArt) {
-                const G = painter(W, H);
+                const G = painter(W, H, ROOM_RES), k = G.res / RES;                      // (the glints run a quarter pixel thick)
                 WIN_PANES.forEach(([x, y, w, h], p) => {
                     G.rect(x, y, w, 0.5, '#000000', 0.34); G.rect(x, y + 0.5, w, 0.5, '#000000', 0.2); G.rect(x, y + 1, w, 0.5, '#000000', 0.08);
                     G.rect(x, y + 0.5, 0.5, h - 0.5, '#000000', 0.2); G.rect(x + 0.5, y + 1, 0.5, h - 1, '#000000', 0.08);
                     // two diagonal glints, broken up a little as if the old glass were slightly uneven
                     [[6, 5, 0.15], [11.5, 2, 0.1], [13.5, 1, 0.06]].forEach(([o, thick, a]) => {
-                        for (let k = 0; k < Math.min(w, h) * 2; k++) for (let t = 0; t < thick; t++) {
-                            const gx = (x + w) * 2 - 1 - (o * 2 + k + t), gy = y * 2 + k;
-                            if (gx >= x * 2 + 2 && gy < (y + h) * 2 && (k + p * 5) % 18 < 13) G.fset(gx, gy, '#ffffff', a * (t === 0 || t === thick - 1 ? 0.6 : 1));
+                        for (let n = 0; n < Math.min(w, h) * G.res; n++) for (let t = 0; t < thick * k; t++) {
+                            const gx = (x + w) * G.res - 1 - (o * G.res + n + t), gy = y * G.res + n;
+                            if (gx >= x * G.res + G.res && gy < (y + h) * G.res && (Math.floor(n / k) + p * 5) % 18 < 13) G.fset(gx, gy, '#ffffff', a * (t < k / 2 + 0.5 || t >= (thick - 0.5) * k ? 0.6 : 1));
                         }
                     });
                 });
@@ -12416,14 +12447,14 @@
         function drawLamp() {
             const key = lampLit ? 'on' : 'off';
             if (!lampArt[key]) {
-                const S = painter(28, 74), ox = 166, oy = 70;
+                const S = painter(28, 74, ROOM_RES), ox = 166, oy = 70, r = S.res;
                 const q = (x, y) => [x - ox, y - oy];
                 const fab = lampLit ? ['#c4812a', '#d99a3a', '#ecbd5a', '#fbdc7e', '#fff0b0', '#fffae0'] : ['#4f545c', '#5f646d', '#7a808a', '#959ca7', '#b0b7c1', '#c8ced6'];
                 const brass = ['#5c2d06', '#8a4a0a', '#b45309', '#d97706', '#f2b84a', '#fde7a8'];
                 const B = q(0, 0);
                 // the shade: flaring out towards the bottom, pleated, lit from the left (and glowing from within when it's on)
                 S.fine(...q(168, 74), 24, 14, (fx, fy) => {
-                    const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy, t = (y - 74) / 14;
+                    const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy, t = (y - 74) / 14;
                     const x0 = 173.5 - t * 4.3, x1 = 186.5 + t * 4.3;
                     if (x < x0 || x > x1) return null;
                     const u = (x - x0) / (x1 - x0) * 2 - 1;
@@ -12435,10 +12466,16 @@
                 });
                 T_rect(S, q, 173, 74, 14, 0.5, brass[5]); T_rect(S, q, 173, 74.5, 14, 0.5, brass[3]); T_rect(S, q, 173, 75, 14, 0.5, brass[1]);
                 T_rect(S, q, 168.5, 86.5, 23, 0.5, brass[4]); T_rect(S, q, 168.5, 87, 23, 0.5, brass[2]); T_rect(S, q, 168.5, 87.5, 23, 0.5, brass[0]);
-                S.fmap(...q(178.5, 71), ['.hh.', 'hHbd', 'hbbd', 'bbdd', '.bd.', '.bd.'], { H: '#fff6d0', h: brass[5], b: brass[3], d: brass[1] });   // the finial
+                S.fine(...q(178.5, 71), 2, 3, (fx, fy) => {                                 // the finial: a brass ball on a little neck
+                    const x = (fx + 0.5) / r + ox - 179.5, y = (fy + 0.5) / r + oy - 72;
+                    if (y > 0.9) return Math.abs(x) < 0.45 ? (x < 0 ? brass[3] : brass[1]) : null;
+                    const d = Math.hypot(x, y);
+                    if (d > 0.95) return null;
+                    return Math.hypot(x + 0.35, y + 0.35) < 0.22 ? '#fff6d0' : rampAt(brass, 0.6 - 0.45 * x - 0.4 * y, fx, fy);
+                });
                 // the stem: a brass rod with a turned knop half-way down
                 S.fine(...q(178.5, 88), 3, 50, (fx, fy) => {
-                    const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy;
+                    const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy;
                     const knop = y > 109.5 && y < 112.5, hw = knop ? 1.5 - Math.abs(y - 111) * 0.35 : 0.9;
                     const u = (x - 180) / hw;
                     if (Math.abs(u) > 1) return null;
@@ -12446,7 +12483,7 @@
                 });
                 // the base: a stepped brass dome
                 S.fine(...q(173, 134), 14, 8, (fx, fy) => {
-                    const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy;
+                    const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy;
                     if (y > 141) return brass[0];
                     const hw = y < 136 ? 1 + (y - 134) * 0.8 : 2.6 + Math.pow((y - 136) / 5, 0.6) * 4.3;
                     const u = (x - 180) / hw;
@@ -12489,35 +12526,41 @@
         // fine grid, half a pixel at a time, so the flames lick and curl smoothly.
         const FLAME_RAMP = ['#fff6c8', '#fde047', '#fbb024', '#f97316', '#e04a14', '#a8200f'];
         const FLAME_TONGUES = [[277, 3.5, 9, 0], [282, 4.5, 15, 1.7], [287, 4, 13, 3.1], [292, 3.2, 8, 4.4], [284.5, 3, 18, 2.4]];
+        // A quarter-pixel detail straight onto the room (the fire, which is drawn fresh every frame)
+        function qd(x, y, w, h, color) {
+            const s = ROOM_RES;
+            ctx.fillStyle = color;
+            ctx.fillRect(Math.round(x * s) / s, Math.round(y * s) / s, Math.max(1, Math.round(w * s)) / s, Math.max(1, Math.round(h * s)) / s);
+        }
         function drawFire() {
             // logs glowing along their cracks, and the coals beneath
-            const t = globalTick;
+            const t = globalTick, Q = 1 / ROOM_RES;                       // (the flames are drawn a quarter pixel at a time)
             for (let x = 272; x < 296; x += 0.5) {
                 const n = hash2(x * 2, Math.floor(t / 9), 3);
-                hd(ctx, x, 131, 0.5, 1, n < 0.35 ? '#ff9a3a' : n < 0.7 ? '#e0461b' : '#7a1a0c');
-                if (hash2(x * 2, Math.floor(t / 13), 5) < 0.22) hd(ctx, x, 132, 0.5, 0.5, '#ffd36a');
+                qd(x, 131, 0.5, 1, n < 0.35 ? '#ff9a3a' : n < 0.7 ? '#e0461b' : '#7a1a0c');
+                if (hash2(x * 2, Math.floor(t / 13), 5) < 0.22) qd(x + Q, 132, 0.25, 0.5, '#ffd36a');
             }
             [[278, 126], [283, 127], [289, 126], [275, 129], [286, 129], [292, 130]].forEach(([x, y], i) => {
                 const on = (Math.floor(t / 7) + i) % 3;
-                hd(ctx, x, y, 2, 0.5, on ? '#ff7a1f' : '#ffc35a');
-                hd(ctx, x + 0.5, y + 0.5, 1, 0.5, on ? '#c2410c' : '#ff9a3a');
+                qd(x, y, 2, 0.5, on ? '#ff7a1f' : '#ffc35a');
+                qd(x + 0.5, y + 0.5, 1, 0.5, on ? '#c2410c' : '#ff9a3a');
             });
             // the flames, half a pixel at a time
             const tops = [];
-            for (let x = 272; x < 297; x += 0.5) {
+            for (let x = 272; x < 297; x += Q) {
                 let h = 0, core = 1;
                 FLAME_TONGUES.forEach(([cx, r, hmax, ph]) => {
                     const sway = Math.sin(t * 0.09 + ph) * 1.2 + Math.sin(t * 0.21 + ph * 3 + x * 0.3) * 0.25;
                     const hh = hmax * (0.78 + 0.16 * Math.sin(t * 0.23 + ph * 2) + 0.1 * hash2(Math.floor(t / 4), ph * 10, 7));
-                    const k = 1 - Math.abs(x + 0.25 - cx - sway) / r;
+                    const k = 1 - Math.abs(x + Q / 2 - cx - sway) / r;
                     if (k > 0 && hh * k > h) { h = hh * Math.sqrt(k); core = k; }
                 });
                 tops.push(h);
                 let runK = -1, runJ = 0;                                       // runs of one colour in one go
-                for (let j = 0; j <= h; j += 0.5) {
+                for (let j = 0; j <= h; j += Q) {
                     const k = j < h ? Math.min(5, Math.floor((j / h + (1 - core) * 0.35) * 5.2)) : -1;
                     if (k !== runK) {
-                        if (runK >= 0) hd(ctx, x, 129 - j, 0.5, j - runJ, FLAME_RAMP[runK]);
+                        if (runK >= 0) qd(x, 129 - j, Q, j - runJ, FLAME_RAMP[runK]);
                         runK = k; runJ = j;
                     }
                 }
@@ -12531,11 +12574,11 @@
                     fp.y = 127;
                     fp.life = 0.7 + Math.random() * 0.3;
                 }
-                const top = 128 - (tops[Math.round((fp.x - 272) * 2)] || 0);
+                const top = 128 - (tops[Math.round((fp.x - 272) * ROOM_RES)] || 0);
                 if (fp.y > top + 1) return;                                       // still inside the flame
                 const col = fp.life > 0.6 ? FLAME_RAMP[2] : fp.life > 0.35 ? FLAME_RAMP[4] : FLAME_RAMP[5];
-                hd(ctx, fp.x, fp.y, 0.5, fp.life > 0.4 ? 1.5 : 0.5, col);
-                if (fp.life > 0.6) hd(ctx, fp.x, fp.y, 0.5, 0.5, FLAME_RAMP[1]);
+                qd(fp.x, fp.y, 0.5, fp.life > 0.4 ? 1.5 : 0.5, col);
+                if (fp.life > 0.6) qd(fp.x, fp.y, 0.5, 0.5, FLAME_RAMP[1]);
             });
         }
 
