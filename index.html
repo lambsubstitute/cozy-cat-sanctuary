@@ -10835,52 +10835,72 @@
                         for (let i = 0; i < row.length; i++) { const col = pal[row[i]]; if (col) put(fx + i, fy + j, rgbOf(col), 1); }
                     });
                 },
+                // the same, a character per half room pixel whatever the resolution (so a little
+                // bitmap drawn for RES 2 keeps its size on a finer painter)
+                hmap(x, y, rows, pal) {
+                    rows.forEach((row, j) => {
+                        for (let i = 0; i < row.length; i++) { const col = pal[row[i]]; if (col) P.rect(x + i / 2, y + j / 2, 0.5, 0.5, col); }
+                    });
+                },
                 // a line one fine pixel thick
                 line(x0, y0, x1, y1, col, a = 1) {
                     const c = rgbOf(col), n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) * res));
                     for (let k = 0; k <= n; k++) put(fl(x0 + (x1 - x0) * k / n), fl(y0 + (y1 - y0) * k / n), c, a);
                 },
-                // a dark line round everything painted so far, one fine pixel thick, in a deep
-                // shade of whatever it's next to
+                // a dark line round everything painted so far, half a room pixel thick (a fine pixel,
+                // at RES 2), in a deep shade of whatever it's next to
                 outline(amt = -0.8) {
-                    const src = d.slice();
-                    for (let fy = 0; fy < FH; fy++) for (let fx = 0; fx < FW; fx++) {
-                        const i = (fy * FW + fx) * 4;
-                        if (src[i + 3]) continue;
-                        for (const [dx, dy] of OUTLINE_DIRS) {
-                            const xx = fx + dx, yy = fy + dy;
-                            if (xx < 0 || yy < 0 || xx >= FW || yy >= FH) continue;
-                            const j = (yy * FW + xx) * 4;
-                            if (src[j + 3] < 200) continue;
-                            const s = shadeRgb([src[j], src[j + 1], src[j + 2]], amt);
-                            d[i] = s[0]; d[i + 1] = s[1]; d[i + 2] = s[2]; d[i + 3] = 255;
-                            break;
+                    const line = new Uint8Array(FW * FH);
+                    for (let pass = 0; pass < Math.max(1, res / 2); pass++) {
+                        const src = d.slice(), was = line.slice();
+                        for (let fy = 0; fy < FH; fy++) for (let fx = 0; fx < FW; fx++) {
+                            const i = (fy * FW + fx) * 4;
+                            if (src[i + 3]) continue;
+                            for (const [dx, dy] of OUTLINE_DIRS) {
+                                const xx = fx + dx, yy = fy + dy;
+                                if (xx < 0 || yy < 0 || xx >= FW || yy >= FH) continue;
+                                const j = (yy * FW + xx) * 4;
+                                if (src[j + 3] < 200 || (pass && !was[yy * FW + xx])) continue;
+                                const s = pass ? [src[j], src[j + 1], src[j + 2]] : shadeRgb([src[j], src[j + 1], src[j + 2]], amt);   // (the first ring is the shade; any more just thicken it)
+                                d[i] = s[0]; d[i + 1] = s[1]; d[i + 2] = s[2]; d[i + 3] = 255;
+                                line[fy * FW + fx] = 1;
+                                break;
+                            }
                         }
                     }
                     return P;
                 },
                 // Round off the steps along the edges of what's painted so far, the way the classic
-                // double-size pixel-art scalers (EPX, Scale2x) do: a fine pixel is filled into each
-                // inside corner and taken off each outside corner, so diagonals and curves read
-                // smoothly. Only whole room pixels count; fine details are left as they are.
+                // double-size pixel-art scalers (EPX, Scale2x) do: a little triangle of fine pixels
+                // (one, at RES 2) is filled into each inside corner and taken off each outside corner,
+                // so diagonals and curves read smoothly. Only whole room pixels count; fine details
+                // are left as they are.
                 smooth() {
-                    if (res !== 2) return P;
+                    if (res % 2) return P;
+                    const k = res, hk = res / 2;
                     const cw = Math.ceil(w), ch = Math.ceil(h), S = new Uint8Array(cw * ch);   // 0 clear, 1 solid, 2 partly painted
                     for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
-                        let n = 0;
-                        for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) if (solid(2 * x + i, 2 * y + j) && d[((2 * y + j) * FW + 2 * x + i) * 4 + 3] > 249) n++;
-                        S[y * cw + x] = n === 4 ? 1 : n === 0 && !solid(2 * x, 2 * y) && !solid(2 * x + 1, 2 * y) && !solid(2 * x, 2 * y + 1) && !solid(2 * x + 1, 2 * y + 1) ? 0 : 2;
+                        let n = 0, any = false;
+                        for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) {
+                            if (!solid(k * x + i, k * y + j)) continue;
+                            any = true;
+                            if (d[((k * y + j) * FW + k * x + i) * 4 + 3] > 249) n++;
+                        }
+                        S[y * cw + x] = n === k * k ? 1 : any ? 2 : 0;
                     }
                     const at = (x, y) => x < 0 || y < 0 || x >= cw || y >= ch ? 0 : S[y * cw + x];
                     const fill = [], cut = [];
                     for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
                         const p = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
                         if (p === 2 || A === 2 || B === 2 || C === 2 || D === 2) continue;
-                        // [fine x, fine y, the two neighbours that agree, the two that must differ, where to borrow a colour]
-                        [[0, 0, A, C, D, B, 0, -1], [1, 0, A, B, C, D, 1, -1], [0, 1, D, C, B, A, 0, 2], [1, 1, D, B, A, C, 1, 2]].forEach(([i, j, n1, n2, o1, o2, bx, by]) => {
+                        // [which corner (right? bottom?), the two neighbours that agree, the two that must differ]
+                        [[0, 0, A, C, D, B], [1, 0, A, B, C, D], [0, 1, D, C, B, A], [1, 1, D, B, A, C]].forEach(([rt, bt, n1, n2, o1, o2]) => {
                             if (n1 !== n2 || n1 === o1 || n1 === o2 || n1 === p) return;
-                            if (p) cut.push([2 * x + i, 2 * y + j]);
-                            else fill.push([2 * x + i, 2 * y + j, 2 * x + bx, 2 * y + by]);
+                            for (let jj = 0; jj < hk; jj++) for (let ii = 0; ii + jj < hk; ii++) {
+                                const fx = k * x + (rt ? k - 1 - ii : ii), fy = k * y + (bt ? k - 1 - jj : jj);
+                                if (p) cut.push([fx, fy]);
+                                else fill.push([fx, fy, fx, bt ? k * y + k : k * y - 1]);   // (borrowing the colour from the pixel above or below)
+                            }
                         });
                     }
                     fill.forEach(([fx, fy, bx, by]) => {
@@ -10889,16 +10909,6 @@
                     });
                     cut.forEach(([fx, fy]) => { d[(fy * FW + fx) * 4 + 3] = 0; });
                     return P;
-                },
-                // a copy at a finer resolution (a whole multiple of this one), each fine pixel
-                // becoming a little square of them, to carry on painting in more detail
-                finer(res2) {
-                    const Q = painter(w, h, res2), k = res2 / res;
-                    for (let fy = 0; fy < Q.fh; fy++) for (let fx = 0; fx < Q.fw; fx++) {
-                        const i = (Math.floor(fy / k) * FW + Math.floor(fx / k)) * 4, j = (fy * Q.fw + fx) * 4;
-                        Q.d[j] = d[i]; Q.d[j + 1] = d[i + 1]; Q.d[j + 2] = d[i + 2]; Q.d[j + 3] = d[i + 3];
-                    }
-                    return Q;
                 },
                 toCanvas() {
                     const cv = document.createElement('canvas');
@@ -11342,32 +11352,31 @@
             const key = outside.festive || '-';
             if (roomArt && roomArtKey === key) return roomArt;
             roomArtKey = key;
-            const P = painter(W, H);
+            const P = painter(W, H, ROOM_RES);          // (painted at the room canvas's own resolution: quarter pixels)
             paintWallpaper(P);
             paintWainscot(P);
             paintFloor(P);
             if (key === 'halloween') paintCobweb(P);
             paintWindow(P);
             paintShelf(P);
+            paintFireplace(P);
             paintSteps(P);
             paintCatTree(P);
             paintSofa(P);
             if (key !== 'christmas') paintPlant(P);
             paintRugs(P);
             paintBowlMat(P);
-            // Pieces repainted in finer detail go on top at ROOM_RES. (Nothing else overlaps them,
-            // so painting them last changes nothing.)
-            const Q = P.finer(ROOM_RES);
-            paintFireplace(Q);
-            WIN_PANES.forEach(([x, y, w, h]) => Q.erase(x, y, w, h));   // see-through glass
-            roomArt = Q.toCanvas();
+            WIN_PANES.forEach(([x, y, w, h]) => P.erase(x, y, w, h));   // see-through glass
+            roomArt = P.toCanvas();
             return roomArt;
         }
 
         function paintWallpaper(P) {
             // Regency stripes: a broad band with a little damask fleuron (half-dropped from band
             // to band), a pair of pinstripes, then a plain band with a faint paper grain. The
-            // same 12px repeat as ever, drawn at full resolution.
+            // same 12px repeat as ever; the pattern sits on the half-pixel grid, and the paper's
+            // own texture (a soft mottle, the odd fibre) is finer still.
+            const r = P.res, hr = r / 2;
             const B = '#4c2f23', A = '#5a392b', PIN = '#71493a', PIN_D = '#3f2519', M1 = '#432a1f', M2 = '#5f3e2f', M3 = '#684534';
             const MOTIF = [
                 '.....1.....',
@@ -11384,71 +11393,80 @@
             ];
             const MC = { 1: M1, 2: M2, 3: M3 };
             P.fine(0, 0, W, 108, (fx, fy) => {
-                const b = fx % 24, band = Math.floor(fx / 24);
+                const hx = Math.floor(fx / hr), hy = Math.floor(fy / hr), b = hx % 24, band = Math.floor(hx / 24);
+                const mottle = valueNoise(fx / (5 * r), fy / (5 * r), 6);
                 if (b < 14) {
                     // the broad band, a touch lighter down its middle like printed paper
                     if (b >= 1 && b <= 11) {
-                        const row = (fy + (band % 2 ? 12 : 0)) % 24, ch = MOTIF[row] && MOTIF[row][b - 1];
-                        if (MC[ch]) return MC[ch];
+                        const row = (hy + (band % 2 ? 12 : 0)) % 24, ch = MOTIF[row] && MOTIF[row][b - 1];
+                        if (MC[ch]) return ch === '3' && fx % hr === 0 && fy % hr === 0 && hr > 1 ? shade(M3, 0.1) : MC[ch];   // the print catches the light at its top left
                     }
-                    return b === 0 || b === 13 ? shade(B, -0.06) : B;
+                    if (b === 0 || b === 13) return shade(B, -0.06);
+                    return mottle < 0.3 ? shade(B, -0.03) : B;
                 }
                 if (b === 14 || b === 21) return PIN_D;
-                if (b === 15 || b === 22) return PIN;
+                if (b === 15 || b === 22) return fx % hr === hr - 1 && hr > 1 ? shade(PIN, -0.08) : PIN;
                 if (b === 23) return B;
                 const n = hash2(fx, fy, 5);
-                return n < 0.06 ? '#53352a' : n > 0.97 ? '#62402f' : A;              // the plain band, with a paper grain
+                if (n < 0.04) return '#53352a';
+                if (n > 0.98) return '#62402f';
+                return mottle < 0.28 ? '#57372a' : mottle > 0.72 ? '#5d3c2d' : A;   // the plain band, with a paper grain
             });
             // Crown moulding along the ceiling: a cove, a bead and a row of dentils, then its shadow
             const CROWN = ['#140b07', '#22140e', '#3d271c', '#58392a', '#6e4a37', '#83593f', '#5a3b2b', '#3a2419', '#4c3123', '#2a1912'];
             CROWN.forEach((col, j) => P.rect(0, j / 2, W, 0.5, col));
-            for (let fx = 0; fx < W * 2; fx += 6) {                                  // dentils under the bead
-                P.fine(fx / 2, 3.5, 2, 1, (x, y) => y === 7 ? '#6a4634' : '#4f3324');
-                P.fine(fx / 2 + 2, 3.5, 0.5, 1, () => '#24150e');
+            P.rect(0, 2.5, W, 1 / r, '#9a6c4e');                                         // the bead's highlight
+            for (let x = 0; x < W; x += 3) {                                             // dentils under the bead
+                P.fine(x, 3.5, 2, 1, (fx, fy) => fy === 3.5 * r ? '#6a4634' : fx === x * r ? '#5a3b2b' : '#4f3324');
+                P.fine(x + 2, 3.5, 0.5, 1, () => '#24150e');
             }
             P.fade(0, 5, W, 10, -0.36);
             // the corners of the room are a touch darker
-            for (let i = 0; i < 28; i++) {
-                P.tint(i / 2, 5, 0.5, 103, -0.22, (28 - i) / 28 * 0.7);
-                P.tint(W - (i + 1) / 2, 5, 0.5, 103, -0.22, (28 - i) / 28 * 0.7);
+            for (let i = 0, n = 14 * r; i < n; i++) {
+                P.tint(i / r, 5, 1 / r, 103, -0.22, (n - i) / n * 0.7);
+                P.tint(W - (i + 1) / r, 5, 1 / r, 103, -0.22, (n - i) / n * 0.7);
             }
         }
 
         function paintWainscot(P) {
+            const r = P.res, hr = r / 2;
             // Chair rail: a moulded profile, lit along its top edge
             ['#a0735a', '#8a5e45', '#7a523c', '#6e4a37', '#5a3c2b', '#4a3022', '#33201a', '#1d110b'].forEach((col, j) => P.rect(0, 108 + j / 2, W, 0.5, col));
+            P.rect(0, 108, W, 1 / r, '#b88a6c');
             // Panelling: a wood ground, then raised fielded panels with bevels that catch the light
             woodFill(P, 0, 112, W, 18, '#3e271d', 21, -0.12, 0.07, 8);
             for (let x = 8; x < W; x += 16) {
-                const y = 112, X = x * 2, Y = y * 2, PW = 24, PH = 36;            // in fine pixels
+                const y = 112, X = x * r, Y = y * r, PW = 12 * r, PH = 18 * r;    // in fine pixels
                 woodFill(P, x + 2, y + 2, 8, 14, '#46291f', x, -0.1, 0.06, 5);
                 P.fine(x, y, 12, 18, (fx, fy) => {
-                    const i = fx - X, j = fy - Y, r = PW - 1 - i, b = PH - 1 - j;
-                    const e = Math.min(i, j, r, b);
-                    if (e === 0) return i === 0 || j === 0 ? '#24150e' : '#5c3e2e';         // the groove: shadowed top and left, lit bottom and right
-                    if (e === 1) return i === 1 || j === 1 ? '#2e1c14' : '#4d3226';
-                    if (e < 5) {
+                    const i = fx - X, j = fy - Y, ri = PW - 1 - i, bj = PH - 1 - j;
+                    const e = Math.min(i, j, ri, bj), eh = Math.floor(e / hr);              // fine pixels in from the edge, and half pixels
+                    if (eh === 0) return i < hr || j < hr ? '#24150e' : '#5c3e2e';          // the groove: shadowed top and left, lit bottom and right
+                    if (eh === 1) return i < r || j < r ? '#2e1c14' : '#4d3226';
+                    if (eh < 5) {
                         // the bevel, sloping up to the raised field: lit facing up and left
-                        const top = j <= Math.min(i, r), left = i <= Math.min(j, b), bot = b <= Math.min(i, r);
+                        const top = j <= Math.min(i, ri), left = i <= Math.min(j, bj), bot = bj <= Math.min(i, ri);
                         const k = top ? 2 : left ? 1 : bot ? -2 : -1;
                         const col = ['#2b1a12', '#341f16', '#46291f', '#5a3a2b', '#6a4535'][k + 2];
-                        return e === 4 ? shade(col, k > 0 ? 0.08 : -0.08) : col;
+                        const s = (e - r) / (4 * hr - r);                                       // across the bevel, 0 at its foot
+                        return shade(col, (k > 0 ? 0.1 : -0.1) * s);
                     }
-                    if (e === 5) return j === 5 && i > 4 ? '#5e3e2e' : null;                // a fine lit edge round the field
+                    if (eh === 5) return Math.floor(j / hr) === 5 && i >= 5 * hr ? '#5e3e2e' : null;   // a fine lit edge round the field
                     return null;
                 });
             }
             P.fade(0, 112, W, 1.5, -0.3);                                              // the rail's shadow on the panels
             // Skirting board: a bead along the top, a plain board, and its shadow on the floor
             ['#7a5240', '#5e3e2c', '#3e281d', '#4a2f22'].forEach((col, j) => P.rect(0, 130 + j / 2, W, 0.5, col));
+            P.rect(0, 130, W, 1 / r, '#93644c');
             woodFill(P, 0, 132, W, 2, '#341f16', 33, -0.12, 0.06, 7);
             P.rect(0, 134, W, 0.5, '#24150e'); P.rect(0, 134.5, W, 0.5, '#120a06');
             // Mouse holes, nibbled into the skirting: an arch with a lit rim, dark inside and darker still at the back
             MOUSE_HOLES.forEach(h => {
                 const cx = h.x + 0.5;
                 P.fine(h.x - 6, 124, 13, 11, (fx, fy) => {
-                    const dx = (fx + 0.5) / 2 - cx, y = (fy + 0.5) / 2;
-                    const nib = (hash2(fx, fy >> 1, 41) - 0.5) * 0.35;                  // a slightly ragged, gnawed edge
+                    const dx = (fx + 0.5) / r - cx, y = (fy + 0.5) / r;
+                    const nib = (hash2(Math.floor(fx / hr), Math.floor(fy / r), 41) - 0.5) * 0.35;   // a slightly ragged, gnawed edge
                     const d = y > 129.5 ? Math.abs(dx) / 5.2 : Math.hypot(dx / 5.2, (y - 129.5) / 5);
                     if (d > 1.12 + nib) return null;
                     if (d > 0.98 + nib) return dx < 0 && y < 131 ? '#7a5240' : '#4a2f22';   // the rim, where the wood's chewed through
@@ -11460,66 +11478,72 @@
 
         function paintFloor(P) {
             // Floorboards: each its own tone, with a flowing grain, a lit front edge, the odd knot,
-            // and nail heads by the joints
+            // and nail heads by the joints. (The grain is worked out in half pixels, as it always
+            // was, but drawn a fine pixel at a time, so its lines flow rather than step.)
+            const r = P.res, hr = r / 2;
             const TONES = ['#6e4730', '#754d34', '#69432d', '#7a523a', '#6b452f'];
             const GAP = '#2e1b10';
             for (let y0 = 135; y0 < H; y0 += 7) {
-                const off = (y0 * 19) % 45, Y0 = y0 * 2;
+                const off = (y0 * 19) % 45, Y0 = y0 * r;
                 for (let jx = off - 45, n = 0; jx < W; jx += 45, n++) {
                     const base = TONES[Math.floor(hash2(n, y0, 3) * TONES.length)];
                     const hi = shade(base, 0.2), lit = shade(base, 0.1), gd = shade(base, -0.14), gd2 = shade(base, -0.24), gl = shade(base, 0.07);
-                    const seed = y0 * 7 + n, JX = jx * 2;
+                    const seed = y0 * 7 + n, JX = jx * r;
                     const ph = hash2(n, y0, 21) * 200, ph2 = hash2(n, y0, 22) * 200, sp = 3 + hash2(n, y0, 23) * 1.5;
-                    const knot = hash2(n, y0, 9) < 0.4 ? { x: JX + 16 + Math.floor(hash2(n, y0, 10) * 56), y: Y0 + 5 + Math.floor(hash2(n, y0, 11) * 4) } : null;
+                    const knot = hash2(n, y0, 9) < 0.4 ? { x: jx * 2 + 16 + Math.floor(hash2(n, y0, 10) * 56), y: y0 * 2 + 5 + Math.floor(hash2(n, y0, 11) * 4) } : null;
                     P.fine(Math.max(0, jx), y0, Math.min(W, jx + 45) - Math.max(0, jx), Math.min(H, y0 + 7) - y0, (fx, fy) => {
-                        const i = fx - JX, j = fy - Y0;
-                        if (j === 0 || i === 0) return GAP;                            // the gaps between boards
-                        if (j === 1) return hi;                                        // the lit front edge of the board above
-                        if (i === 1) return lit;
-                        if (j === 13) return gd;                                       // and the board's own shaded far edge
+                        const i = fx - JX, j = fy - Y0, hx = (fx + 0.5) / hr, hy = (fy + 0.5) / hr, hj = j / hr;
+                        if (j < hr || i < hr) return GAP;                              // the gaps between boards
+                        if (j < r) return j === hr ? hi : shade(hi, -0.06);            // the lit front edge of the board above
+                        if (i < r) return lit;
+                        if (j >= 7 * r - hr) return gd;                                // and the board's own shaded far edge
                         // the grain: lines that wander along the board, and bunch up round a knot
-                        let g = j + 1.6 * Math.sin((fx + ph) * 0.045) + 0.7 * Math.sin((fx + ph2) * 0.13);
+                        let g = hj + 1.6 * Math.sin((hx + ph) * 0.045) + 0.7 * Math.sin((hx + ph2) * 0.13);
                         if (knot) {
-                            const kx = (fx - knot.x) / 3.2, ky = fy - knot.y, kd = Math.hypot(kx, ky);
+                            const kx = (hx - knot.x) / 3.2, ky = hy - knot.y, kd = Math.hypot(kx, ky);
+                            if (kd < 0.7) return shade(gd2, -0.1);
                             if (kd < 1.1) return gd2;
-                            if (kd < 1.8) return gd;
+                            if (kd < 1.8) return kd < 1.4 ? gd : shade(gd, 0.05);
                             g += 3 / (kd * kd + 0.6) * Math.sign(ky || 1);
                         }
                         const f = ((g / sp) % 1 + 1) % 1;
-                        if (f < 0.07) return gd2;
-                        if (f < 0.2) return hash2(fx >> 2, fy, seed) < 0.85 ? gd : base;
-                        if (f > 0.55 && f < 0.62 && hash2(fx >> 3, fy, seed + 1) < 0.5) return gl;
-                        const r = hash2(fx, fy, seed + 2);
-                        return r < 0.04 ? gd : r > 0.985 ? gl : base;
+                        if (f < 0.06) return gd2;
+                        if (f < 0.18) return hash2(Math.floor(hx / 4), fy, seed) < 0.85 ? gd : base;
+                        if (f > 0.55 && f < 0.6 && hash2(Math.floor(hx / 8), fy, seed + 1) < 0.5) return gl;
+                        const rr = hash2(fx, fy, seed + 2);
+                        return rr < 0.03 ? gd : rr > 0.988 ? gl : base;
                     });
-                    [[JX + 5, Y0 + 4], [JX + 5, Y0 + 9]].forEach(([nx, ny]) => {         // nail heads
-                        P.fset(nx, ny, '#2a1a10'); P.fset(nx + 1, ny, '#3f2a1e'); P.fset(nx, ny + 1, '#3f2a1e'); P.fset(nx + 1, ny + 1, shade(base, 0.12));
-                    });
+                    [[jx + 2.5, y0 + 2], [jx + 2.5, y0 + 4.5]].forEach(([nx, ny]) => P.fine(nx, ny, 1, 1, (fx, fy) => {   // nail heads, round and lit
+                        const dx = (fx + 0.5) / r - nx - 0.5, dy = (fy + 0.5) / r - ny - 0.5;
+                        if (Math.hypot(dx, dy) > 0.5) return null;
+                        return dx + dy < -0.3 ? shade(base, 0.14) : dx + dy > 0.2 ? '#2a1a10' : '#3f2a1e';
+                    }));
                 }
             }
             // Darker in the shadow of the skirting, and towards the front
             P.fade(0, 135, W, 8, -0.32);
-            for (let j = 0; j < 20; j++) P.tint(0, H - (j + 1) / 2, W, 0.5, -0.14, 1 - j / 20);
+            for (let j = 0, n = 10 * r; j < n; j++) P.tint(0, H - (j + 1) / r, W, 1 / r, -0.14, 1 - j / n);
             // The window's daylight lies across the boards in front of the sofa
-            for (let j = 0; j < 16; j++) P.tint(72 + j / 2, 143 + j / 2, 100 - j, 0.5, 0.06, 0.5 - j * 0.025);
+            for (let j = 0, n = 8 * r; j < n; j++) P.tint(72 + j / r, 143 + j / r, 100 - j * 2 / r, 1 / r, 0.06, 0.5 - j / n * 0.4);
         }
 
         function paintCobweb(P) {
             // gossamer threads, a fine pixel thick: spokes from the corner, and sagging rings between them
-            const col = '#b3afab';
+            const col = '#b3afab', r = P.res;
             [[16, 0], [14, 6], [11, 11], [6, 14], [0, 16]].forEach(([x, y]) => P.line(0, 0, x, y, col, 0.5));
-            [4, 7.5, 11, 14.5].forEach(r => {
-                for (let a = 0; a <= 1.0001; a += 0.015) {
-                    const ang = a * Math.PI / 2, sag = Math.sin((a * 4) % 1 * Math.PI) * r * 0.06 + Math.sin(a * Math.PI) * r * 0.05;
-                    P.dot(Math.cos(ang) * (r + sag), Math.sin(ang) * (r + sag), col, 0.45);
+            [4, 7.5, 11, 14.5].forEach(rad => {
+                for (let a = 0; a <= 1.0001; a += 0.03 / r) {
+                    const ang = a * Math.PI / 2, sag = Math.sin((a * 4) % 1 * Math.PI) * rad * 0.06 + Math.sin(a * Math.PI) * rad * 0.05;
+                    P.dot(Math.cos(ang) * (rad + sag), Math.sin(ang) * (rad + sag), col, 0.45);
                 }
             });
             P.line(10.5, 0, 10.5, 6.5, col, 0.5);                                      // the spider's thread
-            P.fmap(9.5, 6.5, ['k.kk.k', '.kKKk.', 'kKKKKk', '.kKKk.', 'k.kk.k'], { k: '#141018', K: '#2b2533' });   // a tiny (friendly) spider
-            P.dot(10.5, 7, '#ff6b6b'); P.dot(11, 7, '#ff6b6b');                          // ...with a red back
+            P.hmap(9.5, 6.5, ['k.kk.k', '.kKKk.', 'kKKKKk', '.kKKk.', 'k.kk.k'], { k: '#141018', K: '#2b2533' });   // a tiny (friendly) spider
+            P.rect(10.5, 7, 1, 0.5, '#ff6b6b');                                          // ...with a red back
         }
 
         function paintWindow(P) {
+            const r = P.res, hr = r / 2;
             const { x: wx, y: wy, w: ww, h: wh } = WIN;
             const DEEP = '#1c110b', DARK = '#2e1c13', MID = '#4a2f20', BASE = '#3e271b', LIT = '#563726', HI = '#714b35', HI2 = '#8d6046';
             // The frame: a moulded architrave, lit along the top and the left, and the glazing bars
@@ -11531,34 +11555,48 @@
             BAR.forEach((col, i) => P.rect(mx + i / 2, wy, 0.5, wh, col));
             BAR.forEach((col, j) => P.rect(wx, my + j / 2, ww, 0.5, col));
             P.fine(mx, my, 3, 3, (fx, fy) => {                                          // a neat mitre where the bars cross
-                const i = fx - mx * 2, j = fy - my * 2;
-                return i < j ? BAR[i] : BAR[j];
+                const i = fx - mx * r, j = fy - my * r;
+                return i < j ? BAR[Math.floor(i / hr)] : BAR[Math.floor(j / hr)];
             });
+            // a faint grain running along the timber of the frame and the bars
+            const grain = (x, y, w, h, along) => {
+                for (let fy = Math.round(y * r); fy < Math.round((y + h) * r); fy++) for (let fx = Math.round(x * r); fx < Math.round((x + w) * r); fx++) {
+                    const g = along ? valueNoise(fx / 24, fy / 1.5, 42) : valueNoise(fx / 1.5, fy / 24, 42);
+                    if (g < 0.22) P.fshade(fx, fy, -0.07); else if (g > 0.8) P.fshade(fx, fy, 0.05);
+                }
+            };
+            grain(wx - 4, wy - 4, ww + 8, 4, true); grain(wx - 4, wy, 4, wh, false); grain(wx + ww, wy, 4, wh, false);
+            grain(mx, wy, 3, wh, false); grain(wx, my, ww, 3, true);
             // Velvet curtains, folded: deep shadow in the recesses, sheen on the ridges, and a
             // little more light on the side facing the window. The folds are shaded round, a fine
-            // column at a time, so they read as soft cloth.
+            // column at a time, so they read as soft cloth, and the pile runs down them in faint streaks.
             const R = ramp('#991b1b', [-0.6, -0.4, -0.22, -0.06, 0.1, 0.26, 0.4]);
             [[wx - 10, [1, 3, 4, 3, 1, 2, 4, 5, 3]], [wx + ww + 1, [3, 5, 4, 2, 1, 3, 4, 3, 1]]].forEach(([cx, folds], side) => {
-                const C = painter(9, 80);
-                const foldAt = u => {                                                   // the fold depth at fine column u, smoothly
+                const C = painter(9, 80, r);
+                const foldAt = u => {                                                   // the fold depth at room position u, smoothly
                     const s = clamp(u - 0.5, 0, 8), i = Math.floor(s), f = s - i, k0 = folds[i], k1 = folds[Math.min(8, i + 1)];
                     return k0 + (k1 - k0) * (0.5 - 0.5 * Math.cos(f * Math.PI));
                 };
                 C.fine(0, 0, 9, 80, (fx, fy) => {
-                    const i = Math.floor(fx / 2), j = fy / 2, k = foldAt((fx + 0.5) / 2);
-                    if (folds[i] <= 1 && fy >= 158) return null;                        // the recesses hang a little shorter
+                    const i = Math.floor(fx / r), j = fy / r, hj = Math.floor(fy / hr), k = foldAt((fx + 0.5) / r);
+                    if (folds[i] <= 1 && hj >= 158) return null;                        // the recesses hang a little shorter
                     let kk = k;
                     if (j < 3) kk = Math.max(0, k - 2 + j / 3);                         // gathered up under the rod
                     else if (j < 7 && k > 2) kk = k - 1 + (j - 3) / 4;
-                    if (fy === 150) kk = Math.min(6, kk + 1.5);                         // the hem, with a line of stitching
-                    else if (fy === 151) kk = (fx % 3 === 1) ? 5.5 : kk + 0.6;
-                    else if (fy === 152) kk = Math.min(6, kk + 0.8);
-                    else if (fy === 153) kk = Math.max(0, kk - 1);
-                    if (kk >= 3.6 && hash2(fx, fy, 40 + side) < 0.07) kk += 1.4;          // velvet sheen
+                    if (hj === 150) kk = Math.min(6, kk + 1.5);                         // the hem, with a line of stitching
+                    else if (hj === 151) kk = (Math.floor(fx / hr) % 3 === 1) ? 5.5 : kk + 0.6;
+                    else if (hj === 152) kk = Math.min(6, kk + 0.8);
+                    else if (hj === 153) kk = Math.max(0, kk - 1);
+                    else kk += (valueNoise(fx / 1.5, fy / 30, 44 + side) - 0.5) * 0.7;   // the pile, in long faint streaks
+                    if (kk >= 3.6 && hash2(fx, fy, 40 + side) < 0.05) kk += 1.4;          // velvet sheen
                     return rampAt(R, kk / 6, fx, fy);
                 });
-                for (let i = 1; i < 9; i += 3) C.fmap(i, 0, ['.hb.', 'hbbd'], { h: '#f3d58a', b: '#b08a3a', d: '#6e5420' });   // curtain rings
-                for (let j = 0; j < 44; j++) C.tint(0, 58 + j / 2, 9, 0.5, -0.2, j / 44);   // darker towards the floor
+                for (let i = 1; i < 9; i += 3) C.fine(i, 0, 2, 1, (fx, fy) => {          // curtain rings, round brass
+                    const dx = (fx + 0.5) / r - i - 1, dy = (fy + 0.5) / r - 0.75, d = Math.hypot(dx, dy * 1.4);
+                    if (d > 0.95 || d < 0.45) return null;
+                    return dx + dy < -0.4 ? '#f3d58a' : dx + dy > 0.3 ? '#6e5420' : '#b08a3a';
+                });
+                for (let j = 0, n = 22 * r; j < n; j++) C.tint(0, 58 + j / r, 9, 1 / r, -0.2, j / n);   // darker towards the floor
                 C.smooth().outline(-0.6);
                 stamp(P, C, cx - 1, wy - 3, [2, 2, -0.3, true]);
             });
@@ -11566,15 +11604,20 @@
             P.rect(wx - 13, wy - 5, ww + 26, 0.5, '#8a7060');
             P.rect(wx - 13, wy - 4.5, ww + 26, 0.5, '#4f3d33');
             P.rect(wx - 13, wy - 4, ww + 26, 0.5, '#1e140f');
-            const FIN = ['..hhbb..', '.hHHhbd.', 'hHHhbbdd', 'hhhbbbdd', 'bbbbbddd', '.bbbddd.', '..dddd..'];
-            const FP = { H: '#fff1b8', h: '#f6d27a', b: '#c4902e', d: '#7a4f14' };
-            P.fmap(wx - 17, wy - 7, FIN, FP);
-            P.fmap(wx + ww + 13, wy - 7, FIN, FP);
-            [wx - 9, wx + ww + 7].forEach(bx => P.fmap(bx, wy - 4, ['hbbd', 'bbdd', '.bd.', '.bd.'], { h: '#5a4033', b: '#2a1b14', d: '#120b08' }));
+            P.rect(wx - 13, wy - 5, ww + 26, 1 / r, '#b09484');
+            const BRASS = ['#5a3a0c', '#7a4f14', '#a06e22', '#c4902e', '#e0b04e', '#f6d27a', '#fff1b8'];
+            [wx - 17, wx + ww + 13].forEach(fx0 => P.fine(fx0, wy - 7, 4, 3.5, (fx, fy) => {
+                const dx = ((fx + 0.5) / r - fx0 - 2) / 2, dy = ((fy + 0.5) / r - (wy - 7) - 1.75) / 1.75, e = dx * dx + dy * dy;
+                if (e > 1) return null;
+                if (Math.hypot(dx + 0.38, dy + 0.4) < 0.18) return BRASS[6];                       // the glint
+                return rampAt(BRASS, 0.55 - 0.35 * dx - 0.4 * dy + 0.2 * Math.sqrt(1 - e), fx, fy);
+            }));
+            [wx - 9, wx + ww + 7].forEach(bx => P.hmap(bx, wy - 4, ['hbbd', 'bbdd', '.bd.', '.bd.'], { h: '#5a4033', b: '#2a1b14', d: '#120b08' }));
             P.fade(wx - 13, wy - 3.5, ww + 26, 1, -0.3);
             // The deep windowsill (cats sit on it), with little corbels underneath
-            const S = painter(ww + 16, 8);
+            const S = painter(ww + 16, 8, r);
             S.rect(0, 0, ww + 16, 0.5, '#d19f78');
+            S.rect(0, 0, ww + 16, 1 / r, '#e2b48e');
             S.rect(0, 0.5, ww + 16, 0.5, '#b5845f');
             woodFill(S, 0, 1, ww + 16, 3, '#8a5c41', 7, -0.12, 0.08, 7);
             S.rect(0, 3.5, ww + 16, 0.5, '#7a4f37');
@@ -11584,61 +11627,80 @@
             S.rect(2, 7, ww + 12, 1, '#26170f');
             S.outline(-0.6);
             stamp(P, S, wx - 8, wy + wh, [1, 2, -0.35, true]);
-            const CORBEL = ['hhhbbbbd', '.hhbbbbd', '..hbbbbd', '...hbbbd', '....hbbd', '.....hbd', '......bd', '.......d'];
-            [wx - 4, wx + ww + 1].forEach(cx => P.fmap(cx, wy + wh + 8, CORBEL, { h: '#6a4634', b: '#4a2f20', d: '#24150e' }));
+            [wx - 4, wx + ww + 1].forEach(cx => P.fine(cx, wy + wh + 8, 4, 4, (fx, fy) => {   // the corbels: a curved bracket
+                const x = (fx + 0.5) / r - cx, y = (fy + 0.5) / r - (wy + wh + 8);
+                const d = Math.hypot(x - 4, y);                                                 // a quarter round, under the sill
+                if (d > 4) return null;
+                return d > 3.5 ? '#6a4634' : x > 3.4 ? '#24150e' : '#4a2f20';
+            }));
         }
 
         function paintShelf(P) {
-            const S = painter(64, 30), ox = 178, oy = 28;      // the piece covers x 178.., y 28..
+            const r = P.res, hr = r / 2;
+            const S = painter(64, 30, r), ox = 178, oy = 28;      // the piece covers x 178.., y 28..
             // the plank and its brackets
-            S.rect(2, 18, 58, 0.5, '#8a5e45'); S.rect(2, 18.5, 58, 0.5, '#6e4a35');
+            S.rect(2, 18, 58, 0.5, '#8a5e45'); S.rect(2, 18, 58, 1 / r, '#a37356'); S.rect(2, 18.5, 58, 0.5, '#6e4a35');
             woodFill(S, 2, 19, 58, 2, '#4a2f20', 3, -0.12, 0.07, 6);
             S.rect(2, 20.5, 58, 0.5, '#3a2418'); S.rect(2, 21, 58, 0.5, '#24170f');
-            [6, 52].forEach(bx => S.fmap(bx, 21.5, ['hhbbbd', 'hbbbdd', 'hbbd..', 'hbd...', 'hd....', 'hd....', 'd.....'], { h: '#6a4634', b: '#4a2f20', d: '#24150e' }));
-            // books: rounded spines lit from the left, gilt bands, and a label with a gilt title
+            [6, 52].forEach(bx => S.fine(bx, 21.5, 3, 3.5, (fx, fy) => {                  // brackets with a curved underside
+                const x = (fx + 0.5) / r - bx, y = (fy + 0.5) / r - 21.5;
+                if (x > 3 * Math.pow(1 - y / 3.5, 1.6) + 0.05) return null;
+                return x < 0.5 ? '#6a4634' : x > 3 * Math.pow(1 - y / 3.5, 1.6) - 0.45 ? '#24150e' : '#4a2f20';
+            }));
+            // books: rounded spines lit from the left, cloth with a fine weave, gilt bands, and a
+            // label with a gilt title; the pages show as a pale line along the top
             const BOOKS = ['#b8322a', '#2f5fb3', '#c27a1e', '#2f8a4e', '#7d3fa6', '#2a7aa8'];
+            const GOLD = ['#7a5a1c', '#b08a32', '#e0b84c', '#f6dc86'];
             for (let i = 0; i < 6; i++) {
                 const bh = 9 + (i % 3) * 2, bx = 6 + i * 5, top = 18 - bh, base = BOOKS[i];
                 const R = ramp(base, [-0.5, -0.3, -0.12, 0, 0.14, 0.3]);
-                const GOLD = ['#7a5a1c', '#b08a32', '#e0b84c', '#f6dc86'];
                 S.fine(bx, top, 4, bh, (fx, fy) => {
-                    const u = (fx - bx * 2 + 0.5) / 8 * 2 - 1, j = fy - top * 2;
+                    const u = (fx - bx * r + 0.5) / (2 * r) - 1, jf = (fy - top * r) / hr, j = Math.floor(jf);
                     const t = roundLight(u);
+                    if (fy - top * r < 1) return '#e8dcc0';                                    // a glimpse of the pages
                     if (j === 0) return R[Math.min(5, Math.round(t * 5) + 1)];              // the top of the spine
                     const band = j === 3 || j === 5 || j === bh * 2 - 5 || j === bh * 2 - 7;
-                    if (band) return rampAt(GOLD, t, fx, fy);
+                    if (band) return rampAt(GOLD, t + (jf - j < 0.5 ? 0.12 : -0.08), fx, fy);
                     if (j === 4 && i % 2) return rampAt(GOLD, t * 0.6, fx, fy);               // a double band on every other book
-                    return rampAt(R, t, fx, fy);
+                    return rampAt(R, t + (hash2(fx, fy, 50 + i) < 0.08 ? -0.1 : 0), fx, fy);
                 });
                 const ly = top + Math.floor(bh / 2) - 1;                                    // the label
                 S.rect(bx + 1, ly, 2, 2.5, shade(base, -0.55));
                 S.rect(bx + 1, ly, 2, 0.5, shade(base, -0.35));
-                S.rect(bx + 1.5, ly + 1, 1, 0.5, '#e8c45c');                                // the title, in gilt
-                S.rect(bx + 1.5, ly + 1.5 + (i % 2) * 0.5, 0.5 + (i % 3) * 0.25, 0.5, '#b8932e');
+                S.rect(bx + 1.25, ly + 1, 1.5, 1 / r, '#e8c45c');                           // the title, in gilt
+                S.rect(bx + 1.25, ly + 1.5 + (i % 2) * 0.25, 0.75 + (i % 3) * 0.25, 1 / r, '#b8932e');
             }
             // terracotta pot, shaded round, with a rolled rim
             const POT = ramp('#c2502a', [-0.55, -0.35, -0.15, 0, 0.18, 0.36]);
             S.fine(43, 7, 12, 11, (fx, fy) => {
-                const x = (fx + 0.5) / 2, y = (fy + 0.5) / 2;
+                const x = (fx + 0.5) / r, y = (fy + 0.5) / r;
                 if (y < 9) {                                                                // the rim
                     const u = (x - 49) / 6;
                     if (Math.abs(u) > 1) return null;
-                    const t = roundLight(u) + (y < 7.5 ? 0.2 : y > 8.5 ? -0.3 : 0);
+                    const t = roundLight(u) + 0.25 * Math.cos((y - 7.9) * 2.4) - 0.1;
                     return rampAt(POT, t, fx, fy);
                 }
                 const half = 5 - (y - 9) * 0.15, u = (x - 49) / half;
                 if (Math.abs(u) > 1 || y > 17.5) return null;
                 if (y < 9.5) return POT[0];                                                 // the shadow under the rim
-                return rampAt(POT, roundLight(u) - (y > 16.5 ? 0.25 : 0), fx, fy);
+                return rampAt(POT, roundLight(u) - (y > 16.5 ? 0.25 : 0) + (hash2(fx, fy, 51) < 0.05 ? -0.12 : 0), fx, fy);
             });
             // a pothos tumbling over the edge: vines, then heart-shaped leaves with a pale vein
-            const G = { s: '#1d5a33', l: '#8fdc86', g: '#3fa152', m: '#2a7f43', d: '#195a34', v: '#a8e89a' };
+            const G = ['#195a34', '#2a7f43', '#3fa152', '#5fbf68', '#8fdc86'];
             const VINE = [[48, 7], [46, 4], [42, 5], [44, 3], [48, 7], [50, 4], [54, 8], [56, 13], [55, 19], [57, 25], [55, 29], [55, 19], [52, 21]];
-            for (let i = 1; i < VINE.length; i++) S.line(VINE[i - 1][0] + 0.5, VINE[i - 1][1] + 0.5, VINE[i][0] + 0.5, VINE[i][1] + 0.5, G.s);
-            const LEAF_A = ['.lll.gg.', 'lllvgggm', 'llgvggmm', '.lggvgm.', '..ggvm..', '...gm...', '....m...'];
-            const LEAF_B = ['.gg.lll.', 'mgggvlll', 'mmggvgll', '.mgvggl.', '..mvgg..', '...mg...', '...m....'];
+            for (let i = 1; i < VINE.length; i++) for (let o = 0; o < 0.5; o += 1 / r)
+                S.line(VINE[i - 1][0] + 0.5 + o, VINE[i - 1][1] + 0.5, VINE[i][0] + 0.5 + o, VINE[i][1] + 0.5, o ? '#2a6b3e' : '#1d5a33');
             [[42, 5], [46, 3], [50, 4], [54, 8], [56, 13], [55, 19], [57, 25], [55, 29], [52, 21]].forEach(([lx, ly], i) => {
-                S.fmap(lx - 1.5, ly - 1, i % 2 ? LEAF_B : LEAF_A, G);
+                const lean = i % 2 ? 0.25 : -0.25;                                          // alternate leaves tilt either way
+                S.fine(lx - 1.5, ly - 1, 4, 3.5, (fx, fy) => {
+                    const b = 1.25 - ((fy + 0.5) / r - ly + 1) / 1.555, a = ((fx + 0.5) / r - lx - 0.5) / 1.75 - lean * (1.25 - b) * 0.4;   // a heart, its point at the bottom
+                    const qq = a * a + b * b - 1;
+                    if (qq * qq * qq - a * a * b * b * b > 0) return null;
+                    if (Math.abs(a) < 0.07 && b < 0.95) return '#a8e89a';                   // the vein
+                    let t = 0.5 - 0.35 * a + 0.2 * b;
+                    if (qq > -0.3) t -= 0.25;                                                // darker round the edge
+                    return rampAt(G, t, fx, fy);
+                });
             });
             S.outline(-0.65);
             stamp(P, S, ox, oy, [1, 2, -0.32, true]);
@@ -11876,17 +11938,24 @@
 
         function paintSteps(P) {
             // Floating cat steps up the wall to the mantelpiece, with sisal pads on top
+            const r = P.res, hr = r / 2;
+            const SISAL = ['#a88e66', '#bea57c', '#d0b98e', '#e6d4ae'];
             [[217, 241, 120], [230, 251, 92]].forEach(([x1, x2, y]) => {
-                const w = x2 - x1, S = painter(w, 10);
+                const w = x2 - x1, S = painter(w, 10, r);
                 S.fine(0, 0, w, 1, (fx, fy) => {                                              // woven sisal: a fine herringbone
-                    if (fx < 4 || fx >= w * 2 - 4) return fy ? '#8a5e44' : '#a07052';
-                    const k = (fx + (fy ? 1 : 0)) % 4;
-                    return k === 0 ? '#e6d4ae' : k === 1 ? '#d0b98e' : k === 2 ? '#bea57c' : '#a88e66';
+                    if (fx < 2 * r || fx >= (w - 2) * r) return fy < hr ? '#a07052' : '#8a5e44';
+                    const k = ((fy < hr ? fx + fy : fx - fy) % 4 + 4) % 4;
+                    return shade(SISAL[3 - k], fy === r - 1 ? -0.12 : 0);
                 });
-                S.rect(0, 1, w, 0.5, '#a87a5a'); S.rect(0, 1.5, w, 0.5, '#946446');
+                S.rect(0, 1, w, 0.5, '#a87a5a'); S.rect(0, 1, w, 1 / r, '#ba8b6a'); S.rect(0, 1.5, w, 0.5, '#946446');
                 S.rect(0, 2, w, 0.5, '#86593e'); S.rect(0, 2.5, w, 0.5, '#7c533b');
                 S.rect(0, 3, w, 0.5, '#5e3d2a'); S.rect(0, 3.5, w, 0.5, '#4a2f20');
-                [3, w - 5].forEach(bx => S.fmap(bx, 4, ['hbbd', 'hbbd', 'hbd.', 'hbd.', 'hbd.', 'hd..', 'hd..', 'd...', 'd...'], { h: '#5e3d2a', b: '#4a2f20', d: '#24150e' }));
+                [3, w - 5].forEach(bx => S.fine(bx, 4, 2, 4.5, (fx, fy) => {                  // brackets, curving back to the wall
+                    const x = (fx + 0.5) / r - bx, yy = (fy + 0.5) / r - 4;
+                    const xr = 2 * Math.pow(1 - yy / 4.5, 1.4);
+                    if (x > xr) return null;
+                    return x < 0.45 ? '#5e3d2a' : x > xr - 0.45 ? '#24150e' : '#4a2f20';
+                }));
                 S.outline(-0.6);
                 stamp(P, S, x1, y - 1, [1, 2, -0.3, true]);
             });
@@ -11903,18 +11972,21 @@
         }
 
         function paintCatTree(P) {
-            const T = painter(56, 100), ox = 8, oy = 52;      // piece covers x 8..63, y 52..151
+            const r = P.res, hr = r / 2;
+            const T = painter(56, 100, r), ox = 8, oy = 52;      // piece covers x 8..63, y 52..151
             const C = ramp('#a88b73', [-0.48, -0.32, -0.18, 0, 0.1, 0.22, 0.34]);   // carpet
             const S = ramp('#b89b72', [-0.55, -0.36, -0.18, 0, 0.14, 0.28, 0.4]);   // sisal rope
             const q = (x, y) => [x - ox, y - oy];
             const half = (x, y, w, col) => T.rect(...q(x, y), w, 0.5, col);       // a line half a pixel tall
             // Sisal posts: rope wound round in a tight coil, its strands following the curve of
-            // the post, shaded round like a cylinder, with stray fibres catching the light
+            // the post, each one round and lit along its top, shaded round like a cylinder, with
+            // stray fibres catching the light
             const post = (x0, y0, y1) => T.fine(...q(x0, y0), 8, y1 - y0, (fx, fy) => {
-                const i = fx - (x0 - ox) * 2, u = (i + 0.5) / 8 - 1;
-                const k = ((fy + Math.floor(i * 0.45 + 2.2 * (1 - Math.sqrt(1 - u * u)))) % 4 + 4) % 4;
-                let t = 0.12 + roundLight(u) * 0.8 + (k === 0 ? -0.26 : k === 1 ? 0.14 : k === 3 ? -0.06 : 0);
-                if (hash2(fx, fy, 3) < 0.07) t += 0.16;
+                const i = fx - (x0 - ox) * r, u = (i + 0.5) / (4 * r) - 1;
+                const p = ((fy / hr + (i / hr) * 0.45 + 2.2 * (1 - Math.sqrt(1 - u * u))) / 4) % 1;   // where across a strand of the coil
+                let t = 0.12 + roundLight(u) * 0.8 + 0.2 * Math.cos((p - 0.35) * 2 * Math.PI);
+                if (p > 0.9 || p < 0.04) t -= 0.3;                                              // the groove between strands
+                if (hash2(fx, fy, 3) < 0.05) t += 0.16;
                 return rampAt(S, t, fx, fy);
             });
             post(24, 98, 140);
@@ -11925,7 +11997,7 @@
             half(12, 145.5, 48, C[2]); half(12, 146, 48, C[1]); half(12, 146.5, 48, C[1]);
             T.rect(...q(13, 147), 46, 1, C[0]);
             T.rect(...q(12, 140), 0.5, 7, C[5]); T.rect(...q(12.5, 141), 0.5, 5, C[4]);
-            for (let x = 13; x < 59; x += 1.5) if (hash2(x * 2, 1, 2) < 0.5) T.dot(...q(x, 139.5), C[4]);   // tufts
+            for (let x = 13; x < 59; x += 0.75) if (hash2(x * 4, 1, 2) < 0.5) T.rect(...q(x, 139.5 + (hash2(x * 4, 2, 2) < 0.4 ? 0.25 : 0)), 1 / r, 0.5, C[4]);   // tufts
             // Cat house, with its arched doorway
             fuzzFill(T, ...q(32, 115), 24, 25, C[3], 3);
             half(32, 114, 24, C[6]); half(32, 114.5, 24, C[6]);
@@ -11933,10 +12005,10 @@
             T.rect(...q(32, 115), 0.5, 25, C[5]); T.rect(...q(32.5, 115.5), 0.5, 24.5, C[4]);
             T.rect(...q(54, 115), 1, 25, C[2]); T.rect(...q(55, 115), 1, 25, C[1]);
             T.fine(...q(37, 117), 14, 23, (fx, fy) => {
-                const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy, dx = x - 44;
+                const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy, dx = x - 44;
                 const d = y > 125 ? Math.abs(dx) / 6 : Math.hypot(dx / 6, (y - 125) / 6.2);
                 if (d > 1.1) return null;
-                if (d > 0.95) return dx < 0 ? C[1] : C[5];                              // the rim: shaded left, lit right
+                if (d > 0.95) return dx < 0 ? C[1] : d > 1.03 ? C[6] : C[5];                  // the rim: shaded left, lit right
                 if (d > 0.88 && dx < 0) return C[0];
                 return dith(fx, fy, (y - 119) / 34) ? '#1f150e' : '#130c08';
             });
@@ -11958,88 +12030,106 @@
         }
 
         function paintSofa(P) {
+            const r = P.res, hr = r / 2;
             const V = ramp('#2b5847', [-0.62, -0.46, -0.3, -0.15, 0, 0.16, 0.3, 0.44]);   // V[4] is the velvet itself
-            const S = painter(84, 44), ox = 80, oy = 100;
+            const S = painter(84, 44, r), ox = 80, oy = 100;
             const q = (x, y) => [x - ox, y - oy];
-            const vel = (x, y, w, h, fn) => S.fine(...q(x, y), w, h, (fx, fy) => fn((fx + 0.5) / 2 + ox, (fy + 0.5) / 2 + oy, fx, fy));
+            const vel = (x, y, w, h, fn) => S.fine(...q(x, y), w, h, (fx, fy) => fn((fx + 0.5) / r + ox, (fy + 0.5) / r + oy, fx, fy));
+            const pile = (fx, fy) => (valueNoise(fx / 2, fy / 2, 45) - 0.5) * 0.12;               // the velvet's soft, uneven pile
             // The back, rolled along the top, deep-buttoned in a diamond pattern: each diamond a
             // little puff of velvet lit from the top left, creases running button to button
             vel(88, 102, 68, 4, (x, y, fx, fy) => {
                 if (y < 102.5 && (x < 89 || x > 155)) return null;
-                return rampAt(V, 0.95 - (y - 102) / 4 * 0.6 + (x < 89.5 ? -0.1 : 0), fx, fy);
+                return rampAt(V, 0.95 - (y - 102) / 4 * 0.6 + (x < 89.5 ? -0.1 : 0) + pile(fx, fy), fx, fy);
             });
             vel(88, 106, 68, 22, (x, y, fx, fy) => {
                 const s = (x - 92) / 8 + (y - 109) / 12, t = (x - 92) / 8 - (y - 109) / 12;
                 const fs = s - Math.floor(s), ft = t - Math.floor(t);
                 const bs = Math.round(s), bt = Math.round(t);
                 const bd = Math.hypot((s - bs) * 8, (t - bt) * 8);
-                if (y < 121.5 && bd < 0.9) return bd < 0.45 ? V[0] : V[2];                 // a button, sunk in
+                if (y < 121.5 && bd < 0.9) return bd < 0.4 ? V[0] : bd < 0.6 ? V[1] : V[2];    // a button, sunk in
                 if (y < 121.5 && bd < 1.3 && s - bs < 0 && t - bt < 0) return V[6];         // ...with a glint
                 const cs = Math.min(fs, 1 - fs) * 8, ct = Math.min(ft, 1 - ft) * 8;
-                if (y < 121.5 && Math.min(cs, ct) < 0.45) return V[2];                       // the creases
+                if (y < 121.5 && Math.min(cs, ct) < 0.35) return V[1];                       // the creases...
+                if (y < 121.5 && Math.min(cs, ct) < 0.55) return V[2];                       // ...soft at their edges
                 const u = fs + ft - 1, v = fs - ft;
-                let k = 0.55 - 0.28 * v - 0.12 * u - 0.25 * (u * u + v * v);
+                let k = 0.58 - 0.36 * v - 0.14 * u - 0.32 * (u * u + v * v) + pile(fx, fy);
                 if (y > 117) k -= (y - 117) * 0.04;
                 return rampAt(V, k, fx, fy);
             });
-            // Rolled arms
+            // Rolled arms, piped down the front, with a scroll at the end of each roll
+            const piping = (p, t0, fx, fy) => rampAt(V, t0 + 0.55 * roundLight(p * 2 - 1), fx, fy);
             [82, 150].forEach((ax, side) => {
                 vel(ax, 111, 12, 5, (x, y, fx, fy) => {
                     const u = (x - ax - 6) / 6, v = (y - 113.2) / 2.4;
                     if (y < 111.5 && Math.abs(u) > 0.85) return null;
-                    return rampAt(V, 0.62 - 0.45 * v - 0.12 * u * (side ? 1 : -1) * 0, fx, fy);
+                    return rampAt(V, 0.62 - 0.45 * v + pile(fx, fy), fx, fy);
                 });
                 vel(ax, 116, 12, 23, (x, y, fx, fy) => {
-                    const i = fx - (ax - ox) * 2;
-                    if (i === 2) return V[6];                                                // piping
-                    if (i === 3) return V[3];
-                    if (i === 20) return V[5];
-                    if (i === 21) return V[2];
+                    const i = (fx - (ax - ox) * r) / hr;                                       // half pixels across the arm
+                    if (i >= 2 && i < 4) return piping((i - 2) / 2, 0.15, fx, fy);                     // piping
+                    if (i >= 20 && i < 22) return piping((i - 20) / 2, 0.05, fx, fy);
                     let t = side ? 0.48 : 0.55;
                     if (i < 2) t = side ? 0.5 : 0.66;
-                    if (i > 21) t = 0.2;
+                    if (i >= 22) t = 0.2;
                     if (y > 130) t -= (y - 130) * 0.025;
-                    return rampAt(V, t, fx, fy);
+                    return rampAt(V, t + pile(fx, fy), fx, fy);
                 });
-                S.fmap(...q(ax + 2.5, 111.5), ['..ssss..', '.sLLbbs.', 'sLbbbdds', 'sLbssdds', 'sbbsLsds', 'sbddddds', '.sddddsS', '..ssss..'], { s: V[2], L: V[7], b: V[5], d: V[3], S: V[1] });   // the scroll
+                const sx = ax + 4.5, sy = 113.5;                                                // the scroll
+                vel(ax + 2.5, 111.5, 4, 4, (x, y, fx, fy) => {
+                    const dx = x - sx, dy = y - sy, d = Math.hypot(dx, dy);
+                    if (d > 2) return null;
+                    if (d > 1.7) return d > 1.85 && dx + dy > 0 ? V[1] : V[2];
+                    const a = Math.atan2(dy, dx) / (2 * Math.PI) + 0.5;                          // a spiral groove, winding in
+                    const g = ((d / 1.7 * 2 - a) % 1 + 1) % 1;
+                    if (d > 0.3 && g < 0.14) return V[2];
+                    return rampAt(V, 0.62 - 0.22 * (dx + dy) + (g < 0.3 ? 0.12 : 0), fx, fy);
+                });
                 S.rect(...q(ax, 138), 12, 0.5, V[2]); S.rect(...q(ax, 138.5), 12, 0.5, V[1]);
             });
             // Seat cushions, plump at the front, piped along the edge
             [[92, 29], [123, 29]].forEach(([cx, cw]) => {
                 vel(cx, 122, cw, 14, (x, y, fx, fy) => {
-                    const i = fx - (cx - ox) * 2, j = fy - (122 - oy) * 2, W2 = cw * 2;
-                    if (j === 0 && (i === 0 || i === W2 - 1)) return null;
-                    if (j < 6) return rampAt(V, 0.86 - j * 0.04 + (i < 2 ? 0.08 : i >= W2 - 2 ? -0.25 : 0), fx, fy);   // the top, catching the light
-                    if (j === 6) return V[7];                                              // piping along the front edge
-                    if (j === 7) return V[3];
+                    const i = (fx - (cx - ox) * r) / hr, j = (fy - (122 - oy) * r) / hr, W2 = cw * 2;   // half pixels
+                    if (j < 1 && (i < 1 || i >= W2 - 1)) return null;
+                    if (j < 6) return rampAt(V, 0.86 - j * 0.04 + (i < 2 ? 0.08 : i >= W2 - 2 ? -0.25 : 0) + pile(fx, fy), fx, fy);   // the top, catching the light
+                    if (j < 8) return piping((j - 6) / 2, 0.12, fx, fy);                               // piping along the front edge
                     const front = (j - 8) / 18;
                     let t = 0.6 - front * 0.5;
                     if (i < 2) t += 0.12; else if (i >= W2 - 2) t -= 0.25;
                     if (j >= 25) t = 0.12;
-                    return rampAt(V, t, fx, fy);
+                    return rampAt(V, t + pile(fx, fy), fx, fy);
                 });
             });
-            vel(121, 122, 2, 14, (x, y, fx, fy) => fx % 4 === 0 ? V[0] : V[1]);              // the gap between the cushions
+            vel(121, 122, 2, 14, (x, y, fx, fy) => Math.floor(fx / hr) % 4 === 0 ? V[0] : V[1]);   // the gap between the cushions
             // The dark gap underneath (a favourite hiding place), and turned wooden feet
             S.rect(...q(94, 136), 56, 4, '#140c08');
             S.rect(...q(94, 136), 56, 0.5, '#0a0604');
-            [85, 155].forEach(fx => S.fmap(...q(fx, 139), ['hhbbbbdd', '.hbbbbd.', '..hbbd..', '..hbbd..', '..hbbd..', '.hbbbbd.', 'hhbbbbdd', 'kkkkkkkk'], { h: '#7d5640', b: '#3b2414', d: '#1a0f08', k: '#0e0805' }));
+            const LEG = ['#1a0f08', '#2c1a0e', '#3b2414', '#5a3a26', '#7d5640', '#9a7058'];
+            [85, 155].forEach(lx => S.fine(...q(lx, 139), 4, 4, (fx, fy) => {
+                const x = (fx + 0.5) / r + ox - lx - 2, y = (fy + 0.5) / r + oy - 139;
+                if (y > 3.5) return '#0e0805';
+                const half = y < 0.6 ? 2 : y < 1 ? 1.6 : y < 2.6 ? 1.05 + 0.15 * Math.cos((y - 1.8) * 3) : y < 3 ? 1.5 : 2;   // a turned profile
+                if (Math.abs(x) > half) return null;
+                return rampAt(LEG, roundLight(x / half) * 0.9 + (y < 0.3 || (y > 2.6 && y < 2.8) ? 0.15 : 0), fx, fy);
+            }));
             // A knitted throw over the back and down the seat: coral border, cream with coral
             // stripes, columns of little knitted Vs, and a fringe
             S.fine(...q(134, 112), 14, 24, (fx, fy) => {
-                const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy;
+                const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy, hx = Math.floor(fx / hr), hy = Math.floor(fy / hr);
                 const border = x < 136 || x > 146;
                 const stripe = !border && (y - 112) % 6 >= 4;
                 let base = border || stripe ? '#e07a5f' : '#f2cc8f';
-                const c = fx % 4, v = (c < 2 ? fy + c : fy + 3 - c) % 3;                          // knit stitches
-                if (v === 0) base = shade(base, -0.13); else if (v === 1) base = shade(base, 0.05);
+                const c = hx % 4, v = (c < 2 ? hy + c : hy + 3 - c) % 3;                          // knit stitches
+                if (v === 0) base = shade(base, -0.13); else if (v === 1) base = shade(base, fx % hr ? 0.03 : 0.08);
+                if (hash2(fx, fy, 46) < 0.04) base = shade(base, 0.1);                            // a fuzzy fibre or two
                 if (x < 134.5) base = shade(base, 0.18);
                 if (x >= 146.5) base = shade(base, -0.22);
                 if (y >= 121 && y < 121.5) base = shade(base, 0.24);                              // folded over the seat edge
                 else if (y >= 122 && y < 123) base = shade(base, -0.28);
                 return base;
             });
-            for (let x = 135; x < 147; x += 1) S.fine(...q(x, 136), 0.5, 1.5 + (x % 2) * 0.5, (fx, fy) => fy % 3 === 2 ? '#d9ae72' : '#f2cc8f');
+            for (let x = 135; x < 147; x += 0.5) S.fine(...q(x, 136), 1 / r, 1.5 + (Math.floor(x * 2) % 3) * 0.25, (fx, fy) => Math.floor(fy / hr) % 3 === 2 ? '#d9ae72' : '#f2cc8f');
             S.smooth().outline(-0.75);
             stamp(P, S, ox, oy, [1, 1, -0.25, false]);
             P.fade(82, 143, 82, 3, -0.45);
@@ -12048,31 +12138,34 @@
 
         function paintPlant(P) {
             // A monstera in a glazed amber pot
-            const S = painter(34, 40), ox = 184, oy = 104;
+            const r = P.res;
+            const S = painter(34, 40, r), ox = 184, oy = 104;
             const q = (x, y) => [x - ox, y - oy];
             const G = ramp('#1f8a45', [-0.6, -0.42, -0.24, -0.08, 0.08, 0.24, 0.42]);
             const stems = [[201, 126, 191, 120], [201, 126, 200, 114], [201, 126, 208, 121], [201, 126, 196, 123], [201, 126, 205, 112]];
-            stems.forEach(([x0, y0, x1, y1]) => {
-                S.line(...q(x0 + 0.5, y0 + 0.5), ...q(x1 + 0.5, y1 + 0.5), G[1]);
-                S.line(...q(x0 + 1, y0 + 0.5), ...q(x1 + 1, y1 + 0.5), G[2]);
+            stems.forEach(([x0, y0, x1, y1]) => {                                              // round stems, lit on the left
+                for (let o = 0; o < 1; o += 1 / r) S.line(...q(x0 + 0.5 + o, y0 + 0.5), ...q(x1 + 0.5 + o, y1 + 0.5), G[o < 0.25 ? 3 : o < 0.75 ? 2 : 1]);
             });
             // each leaf: a fat heart-shaped oval with splits cut in from the edge and a few holes,
-            // lit on its upper side, a pale midrib and veins fanning out from it
+            // lit on its upper side, a pale midrib, veins fanning out from it, and a waxy sheen
             const leaf = (cx, cy, rx, ry, ang, seed) => {
                 const ca = Math.cos(ang), sa = Math.sin(ang);
                 S.fine(...q(cx - rx - 1, cy - rx - 1), rx * 2 + 2, rx * 2 + 2, (fx, fy) => {
-                    const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy;
+                    const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy;
                     const dx = x - cx, dy = y - cy, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
-                    const e = (u / rx) ** 2 + (v / ry) ** 2 - (u < -rx * 0.75 ? 0 : 0);
+                    const e = (u / rx) ** 2 + (v / ry) ** 2;
                     if (e > 1) return null;
                     if (u < -rx * 0.82 && Math.abs(v) < ry * 0.18) return null;                  // the notch where it meets the stem
                     const slot = ((u / rx + 1) * 2.6 + seed) % 1;
-                    if (Math.abs(v) > ry * 0.5 && slot > 0.4 && slot < 0.6) return null;         // the splits
-                    if (Math.abs(v) < 0.3 && u > -rx * 0.85) return G[6];                       // midrib
+                    if (Math.abs(v) > ry * 0.5 && slot > 0.42 && slot < 0.58) return null;       // the splits
+                    if (Math.abs(v) < 0.22 && u > -rx * 0.85) return G[6];                      // midrib
+                    if (Math.abs(v) < 0.4 && u > -rx * 0.85) return G[5];
                     let t = v < 0 ? 0.7 : 0.36;
-                    if (Math.abs(v) > 0.5 && (slot < 0.12 || slot > 0.88)) t -= 0.12;              // veins running out between the splits
+                    if (Math.abs(v) > 0.5 && (slot < 0.08 || slot > 0.92)) t -= 0.14;              // veins running out between the splits
+                    else if (Math.abs(v) > 0.5 && (slot < 0.14 || slot > 0.86)) t -= 0.06;
                     if (e > 0.7) t -= 0.18;                                                        // darker round the edge
                     if (u < -rx * 0.4) t -= 0.12;
+                    if (v < 0 && e > 0.25 && e < 0.45 && u > 0) t += 0.16;                         // the waxy sheen
                     return rampAt(G, t, fx, fy);
                 });
             };
@@ -12081,23 +12174,28 @@
             leaf(200, 112, 5.6, 4, -1.7, 0.6);
             leaf(208, 120, 5, 3.6, -0.3, 0.2);
             leaf(196, 122, 4.4, 3, 2.7, 0.8);
-            // the pot: glazed, shaded round, with a band of little dots and a glint
+            // the pot: glazed, shaded round, with a band of little dots, a glint, and the glaze
+            // pooling a little darker towards the foot
             const POT = ['#5a2a08', '#8a4410', '#a85818', '#c26f1e', '#d98a32', '#ebaa52', '#f8cc80'];
             S.fine(...q(192, 126), 18, 15, (fx, fy) => {
-                const x = (fx + 0.5) / 2 + ox, y = (fy + 0.5) / 2 + oy, cx = 201;
+                const x = (fx + 0.5) / r + ox, y = (fy + 0.5) / r + oy, cx = 201;
                 if (y < 128) {                                                                  // the rim
                     const u = (x - cx) / 9;
                     if (Math.abs(u) > 1) return null;
                     if (y > 127.5) return POT[0];
-                    return rampAt(POT, roundLight(u) + (y < 126.5 ? 0.18 : -0.05), fx, fy);
+                    return rampAt(POT, roundLight(u) + 0.25 * Math.cos((y - 126.6) * 2.2) - 0.05, fx, fy);
                 }
                 if (y < 128.5) return '#4a2206';
                 const half = 7 - Math.max(0, y - 136) * 0.55, u = (x - cx) / half;
                 if (Math.abs(u) > 1) return null;
                 if (y > 140.5) return POT[1];
-                let t = roundLight(u);
-                if (y >= 132 && y < 133) return Math.abs(Math.round((x - cx) * 2) % 4) === 0 ? '#f0d08a' : rampAt(POT, t - 0.35, fx, fy);   // the band of dots
+                let t = roundLight(u) - Math.max(0, y - 137) * 0.06;
+                if (y >= 132 && y < 133) {                                                      // the band of dots
+                    const dd = Math.hypot(((x - cx) * 2 % 2 + 2) % 2 - 1, (y - 132.5) * 2);
+                    return dd < 0.75 ? (dd < 0.35 ? '#fff0c0' : '#f0d08a') : rampAt(POT, t - 0.35, fx, fy);
+                }
                 if (u > -0.62 && u < -0.45 && y > 129 && y < 135) return '#fff0c0';           // the glint
+                if (u > -0.7 && u < -0.4 && y > 128.6 && y < 135.6) t += 0.25;
                 return rampAt(POT, t, fx, fy);
             });
             S.outline(-0.75);
@@ -12106,28 +12204,32 @@
         }
 
         function paintRugs(P) {
-            // The big patterned rug: borders, a guard stripe, a running motif, and a medallion field
+            const r = P.res, hr = r / 2;
+            // The big patterned rug: borders, a guard stripe, a running motif, and a medallion
+            // field, with the knotted pile showing as a fine texture across it all
             const x0 = 74, y0 = 150, w = 150, h = 31;
             const RED = '#7c2d12', RED_D = '#5e1f0a', RUST = '#a3401a', GOLD = '#d8a64a', GOLD_D = '#b07a2a', NAVY = '#1e3a8a', NAVY_D = '#16296a',
                   CREAM = '#fef3c7', CREAM_D = '#f1e0b2', AMBER = '#b45309';
-            const X0 = x0 * 2, Y0 = y0 * 2, X1 = (x0 + w) * 2 - 1, Y1 = (y0 + h) * 2 - 1;
+            const X0 = x0 * r, Y0 = y0 * r, X1 = (x0 + w) * r - 1, Y1 = (y0 + h) * r - 1;
             const cx = x0 + w / 2, cy = y0 + h / 2;
+            const pileOf = (col, fx, fy) => {                                                 // the knots of the pile, catching the light unevenly
+                const n = hash2(fx, fy, 33);
+                return n < 0.07 ? shade(col, -0.08) : n > 0.95 ? shade(col, 0.06) : col;
+            };
             P.fine(x0, y0, w, h, (fx, fy) => {
-                const e = Math.min(fx - X0, X1 - fx, fy - Y0, Y1 - fy);                      // fine pixels in from the edge
-                const x = (fx + 0.5) / 2, y = (fy + 0.5) / 2;
-                const weave = hash2(fx, fy, 33) < 0.1;
-                if (e === 0) return RED_D;
-                if (e < 4) return weave ? shade(RED, 0.08) : RED;
+                const ef = Math.min(fx - X0, X1 - fx, fy - Y0, Y1 - fy), e = Math.floor(ef / hr);   // half pixels in from the edge
+                const x = (fx + 0.5) / r, y = (fy + 0.5) / r;
+                if (ef < hr) return ef === 0 ? shade(RED_D, -0.15) : RED_D;
+                if (e < 4) return pileOf(RED, fx, fy);
                 if (e === 4) return GOLD;
                 if (e === 5) return GOLD_D;
                 if (e < 12) {
                     // the border band: a running chain of little cream diamonds
-                    const along = (fy - Y0 === e || Y1 - fy === e || fx - X0 === e || X1 - fx === e) ? 0 : 1;
                     const side = Math.min(fx - X0, X1 - fx) < Math.min(fy - Y0, Y1 - fy);
-                    const a = side ? fy : fx, m = Math.abs(((a + 3) % 8) - 3.5) + Math.abs(e - 8);
-                    if (m < 1.6) return CREAM;
-                    if (m < 2.6) return GOLD_D;
-                    return e === 6 || e === 11 ? NAVY_D : NAVY;
+                    const a = ((side ? fy : fx) + 0.5) / hr - 0.5, eh = (ef + 0.5) / hr - 0.5, m = Math.abs(((a + 3) % 8) - 3.5) + Math.abs(eh - 8);
+                    if (m < 1.9) return pileOf(CREAM, fx, fy);
+                    if (m < 2.7) return GOLD_D;
+                    return pileOf(e === 6 || e === 11 ? NAVY_D : NAVY, fx, fy);
                 }
                 if (e === 12) return GOLD_D;
                 if (e === 13) return GOLD;
@@ -12135,53 +12237,56 @@
                 const md = Math.abs(x - cx) / 3 + Math.abs(y - cy);                            // diamond 'distance' (squashed: it's on the floor)
                 const cd = Math.min(Math.abs(x - (x0 + 7.5)) / 3 + Math.abs(y - (y0 + 7.5)), Math.abs(x - (x0 + w - 7.5)) / 3 + Math.abs(y - (y0 + 7.5)),
                                     Math.abs(x - (x0 + 7.5)) / 3 + Math.abs(y - (y0 + h - 7.5)), Math.abs(x - (x0 + w - 7.5)) / 3 + Math.abs(y - (y0 + h - 7.5)));
-                const ring = (d, edges) => edges.some(r => Math.abs(d - r) < 0.26);
+                const ring = (d, edges, wd = 0.2) => edges.some(rr => Math.abs(d - rr) < wd);
                 if (md < 7.2) {
                     if (ring(md, [2, 3.5, 5, 6.2])) return md < 3 ? NAVY_D : md < 5.5 ? '#7a2a0e' : GOLD_D;   // fine lines between the rings
                     if (md < 0.8) return CREAM;
-                    if (md < 2) return GOLD;
-                    if (md < 3.5) return (Math.abs(x - cx) < 0.5 || Math.abs(y - cy) < 0.3) ? GOLD : NAVY;
-                    if (md < 5) return RUST;
-                    if (md < 6.2) return AMBER;
-                    return CREAM_D;
+                    if (md < 2) return ring(md, [1.4], 0.12) ? GOLD_D : GOLD;
+                    if (md < 3.5) return (Math.abs(x - cx) < 0.5 || Math.abs(y - cy) < 0.3) ? GOLD : pileOf(NAVY, fx, fy);
+                    if (md < 5) return ring(md, [4.25], 0.1) ? AMBER : pileOf(RUST, fx, fy);
+                    if (md < 6.2) return pileOf(AMBER, fx, fy);
+                    return pileOf(CREAM_D, fx, fy);
                 }
-                if (cd < 4.7) return ring(cd, [2.5, 4.5]) ? GOLD_D : cd < 2.5 ? NAVY : RUST;
+                if (cd < 4.7) return ring(cd, [2.5, 4.5]) ? GOLD_D : pileOf(cd < 2.5 ? NAVY : RUST, fx, fy);
                 // a scatter of small rust-and-navy flowers
                 const gx = ((x - x0) % 14 + 14) % 14, gy = (y - y0 + ((Math.floor((x - x0) / 14) % 2) ? 4 : 0)) % 8;
                 const fd = Math.abs(gx - 7.5) / 1.5 + Math.abs(gy - 4.5);
                 if (fd < 0.6) return NAVY;
                 if (fd < 1.6 && (Math.abs(gx - 7.5) < 0.4 || Math.abs(gy - 4.5) < 0.3)) return RUST;
-                return weave ? CREAM_D : CREAM;                                                  // a soft woven look
+                return hash2(fx, fy, 33) < 0.1 ? CREAM_D : CREAM;                                  // a soft woven look
             });
             P.tint(x0, y0 + h - 1, w, 1, -0.2);
             P.fade(x0, y0 + h, w, 2, -0.4);
             // Fringe: knotted threads at each end
-            for (let y = y0 + 1; y < y0 + h - 1; y += 1) {
+            for (let y = y0 + 1; y < y0 + h - 1; y += 0.5) {
                 [[-1, '#ecd9a8', '#fff6dc'], [1, '#d9c48e', '#efe2bc']].forEach(([dir, col, tip], side) => {
-                    const len = 3 + hash2(y, side, 31) * 1.5, ex = dir < 0 ? x0 : x0 + w;
-                    P.dot(dir < 0 ? ex - 0.5 : ex, y, '#b8a170');                                // the knot
-                    for (let i = 0.5; i < len; i += 0.5) P.dot(dir < 0 ? ex - 0.5 - i : ex + i, y + (i > len - 1 ? 0.5 : 0), i > len - 1 ? tip : col);
+                    const len = 3 + hash2(y * 2, side, 31) * 1.5, ex = dir < 0 ? x0 : x0 + w;
+                    P.rect(dir < 0 ? ex - 0.5 : ex, y, 0.5, 1 / r, '#b8a170');                     // the knot
+                    for (let i = 0.5; i < len; i += 1 / r) P.dot(dir < 0 ? ex - i - 1 / r : ex + i, y + (i > len - 1 ? 0.25 : 0), i > len - 0.75 ? tip : col);
                 });
             }
             // The hearth rug: a braided rag rug in reds, a band of cream, a patterned middle
             const hx = 238, hy = 154, hw = 52, hh = 20;
-            const HX0 = hx * 2, HY0 = hy * 2, HX1 = (hx + hw) * 2 - 1, HY1 = (hy + hh) * 2 - 1;
+            const HX0 = hx * r, HY0 = hy * r, HX1 = (hx + hw) * r - 1, HY1 = (hy + hh) * r - 1;
             P.fine(hx, hy, hw, hh, (fx, fy) => {
-                const ex = Math.min(fx - HX0, HX1 - fx), ey = Math.min(fy - HY0, HY1 - fy), e = Math.min(ex, ey);
+                const exf = Math.min(fx - HX0, HX1 - fx), eyf = Math.min(fy - HY0, HY1 - fy);
+                const ex = exf / hr, ey = eyf / hr, e = Math.floor(Math.min(ex, ey));
                 if (ex < 4 && ey < 4 && Math.hypot(4 - ex, 4 - ey) > 4.3) return null;            // rounded corners
                 if (e === 0) return '#5e1010';
                 if (e < 6) {
                     const along = ey < ex ? fx : fy, across = ey < ex ? fy : fx;
-                    const b = ((along + (e < 3 ? across : -across)) >> 1) & 1;                   // the braid, plaited in chevrons
-                    return e === 3 ? '#6e1414' : b ? '#c2412f' : '#8a1c1c';
+                    const p = (along + (e < 3 ? across : -across)) / r, b = Math.floor(p) & 1;   // the braid, plaited in chevrons
+                    if (e === 3) return '#6e1414';
+                    const lit = p - Math.floor(p) < 0.3;                                         // each strand rounded, lit along one side
+                    return b ? (lit ? '#d6563f' : '#c2412f') : (lit ? '#a02424' : '#8a1c1c');
                 }
                 if (e === 6) return '#d9ae72';
-                if (e < 9) return '#f2cc8f';
+                if (e < 9) return hash2(fx, fy, 36) < 0.08 ? '#e6bd80' : '#f2cc8f';
                 if (e === 9) return '#d9ae72';
-                const x = (fx + 0.5) / 2, y = (fy + 0.5) / 2;
+                const x = (fx + 0.5) / r, y = (fy + 0.5) / r;
                 const dx = Math.abs(x - (hx + hw / 2)), dy = Math.abs(y - (hy + hh / 2)), md = dx / 2.5 + dy;
                 const dot = Math.abs(((x - hx) % 8) - 4.5) < 0.6 && Math.abs(((y - hy) % 4) - 1.5) < 0.6;
-                if (Math.abs(md - 3.2) < 0.2 || Math.abs(md - 4.4) < 0.2) return '#6e1414';
+                if (Math.abs(md - 3.2) < 0.18 || Math.abs(md - 4.4) < 0.18) return '#6e1414';
                 return md < 2 ? '#f2cc8f' : md < 3.2 ? '#e07a5f' : md < 4.4 ? '#991b1b' : dot ? '#e07a5f' : hash2(fx, fy, 34) < 0.08 ? '#a82518' : '#b52a20';
             });
             P.tint(hx + 1, hy + hh - 1, hw - 2, 1, -0.2);
@@ -12189,19 +12294,23 @@
         }
 
         function paintBowlMat(P) {
+            const r = P.res, hr = r / 2;
             P.fade(217, 152, 38, 2, -0.4);
             P.fine(217, 144, 38, 8, (fx, fy) => {
-                const i = fx - 434, j = fy - 288, r = 75 - i, b = 15 - j;
-                if (Math.min(i, r) + Math.min(j, b) < 1) return null;                              // rounded corners
-                if (j === 0) return '#8794a8';
-                if (j === 1) return '#6a778b';
-                if (b === 0) return '#26303e';
-                if (b === 1 || r < 2) return '#3d4a5c';
-                if (i < 2) return '#566377';
-                return hash2(fx, fy, 35) < 0.05 ? '#4f5d72' : '#475569';
+                const i = fx - 217 * r, j = fy - 144 * r, ri = 38 * r - 1 - i, bj = 8 * r - 1 - j;
+                const cxd = Math.min(i, ri), cyd = Math.min(j, bj);
+                if (cxd < r && cyd < r && Math.hypot(r - cxd - 0.5, r - cyd - 0.5) > r) return null;   // rounded corners
+                if (j < hr) return j === 0 ? '#9aa6b8' : '#8794a8';
+                if (j < r) return '#6a778b';
+                if (bj < hr) return '#26303e';
+                if (bj < r || ri < r) return '#3d4a5c';
+                if (i < r) return '#566377';
+                const nx = ((fx / r) % 2 + 2) % 2, ny = ((fy / r) % 2 + 2) % 2;               // little raised nubs that stop the bowls sliding
+                if (Math.hypot(nx - 1, ny - 1) < 0.3) return nx + ny < 2 ? '#56647a' : '#3f4c60';
+                return hash2(fx, fy, 35) < 0.04 ? '#4f5d72' : '#475569';
             });
             // an embossed paw print
-            P.fmap(232, 145.5, ['..d..d..', '.dh..dh.', 'd...d...', 'dh..dh..', '...dd...', '..dhhd..', '.dhhhhd.', '.dhhhhd.', '..dddd..'], { d: '#3d4a5c', h: '#56647a' });
+            P.hmap(232, 145.5, ['..d..d..', '.dh..dh.', 'd...d...', 'dh..dh..', '...dd...', '..dhhd..', '.dhhhhd.', '.dhhhhd.', '..dddd..'], { d: '#3d4a5c', h: '#56647a' });
         }
 
         // ---------- Things in the room that change, drawn every frame ----------

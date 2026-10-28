@@ -31,7 +31,7 @@ Super Nintendo era, drawn at double resolution.
 
 - The room is **320 x 190 room pixels** (`W`, `H`). Every position, route, hit box and piece of furniture is in room pixels. **Never move furniture or ledges**: the cats' navigation graph (`NAV_EDGES`) and the tests depend on exact positions.
 - Art is drawn at **`RES = 2`**, so detail can be half a room pixel across. Positions in art code can be on halves (`x + 0.5`).
-- The room canvas (`roomCanvas`, off screen) is **`ROOM_RES = 4`** (1280 x 760). Anything drawn at `RES` lands on it exactly as before; pieces of the room repainted in more detail use quarter pixels (see below). The page's `#dioramaCanvas` is only an evenly scaled copy made each frame (`presentRoom`), so read pixels from `roomCanvas`.
+- The room canvas (`roomCanvas`, off screen) is **`ROOM_RES = 4`** (1280 x 760). Anything drawn at `RES` lands on it exactly as before; the still room is painted at `ROOM_RES`, in quarter pixels (see below). The page's `#dioramaCanvas` is only an evenly scaled copy made each frame (`presentRoom`), so read pixels from `roomCanvas`.
 - `SNAP` is the grid `pxRect` snaps to: `RES` normally, `1` inside a sprite's low-res pass.
 
 ## Two kinds of art
@@ -46,7 +46,7 @@ The still room is painted once into `roomBackdrop()` (repainted only when the fe
 - Finishing: `outline(amt)`, `smooth()` (rounds off stepped edges, EPX style), `toCanvas()`.
 - `stamp(dst, src, x, y, [right, down, amt, soft])` copies a painted piece into the room with its cast shadow. `blit(ctx, canvas, x, y)` draws a painted canvas at a room position.
 
-Pieces repainted in finer detail are painted at `ROOM_RES`: `roomBackdrop` paints everything else at `RES`, makes a finer copy (`P.finer(ROOM_RES)`) and paints them into that, last. `paintFireplace` is the model: work out fine positions from `P.res` rather than assuming 2 (a `fmap` character is one fine pixel, so a quarter pixel there), give its sub-painters (logs, mantel) the same `res` so `stamp` can copy them, and keep its textures from `hash2`/`valueNoise` in fine coordinates. Move a piece over only when nothing painted after it overlaps it (or paint those over it again). Follow the existing `paintWallpaper`, `paintFloor` and furniture painters, and `paintPortrait` for something detailed and procedural. Anything that changes now and then but isn't animated (a portrait, say) is painted once per look and cached by a key.
+`roomBackdrop` paints the whole still room at `ROOM_RES` (`painter(W, H, ROOM_RES)`), so its painters work from `P.res` and never assume 2: a fine pixel is a quarter room pixel there, `fmap` paints one character per fine pixel (use `hmap` for a little bitmap on the half-pixel grid), and a shape worked out from `(fx + 0.5) / r` comes out smoothly at any resolution. Give sub-painters the same `res` (`painter(w, h, P.res)`) so `stamp` can copy them, and keep textures from `hash2`/`valueNoise` in fine coordinates. `outline()` is half a room pixel thick and `smooth()` rounds corners at any even resolution. `paintFireplace` and `paintSofa` are good models. Follow the existing `paintWallpaper`, `paintFloor` and furniture painters, and `paintPortrait` for something detailed and procedural. Anything that changes now and then but isn't animated (a portrait, say) is painted once per look and cached by a key.
 
 ### Symbols: hearts, Zs, sparkles, "!", notes, bubbles
 
