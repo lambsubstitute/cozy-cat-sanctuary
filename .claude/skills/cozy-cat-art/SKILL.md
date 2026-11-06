@@ -81,9 +81,9 @@ Inside a sprite, draw with the right tool for each job:
 | `fineMap(c, x, y, rows, pal)`, `fineTri(...)` | Small fine-pixel bitmaps and triangles. |
 | `fineDabs(c, [[x, y, r, col]...])` with `roundShader(col, r, nx, ny)` | Smooth, curved, moving parts: anything that bends or moves half a pixel at a time. |
 | `catMap(c, x, y, rows, catCols(cat))` | A body as a shaped bitmap, one letter per room pixel: `B` coat, `S` tabby markings, `W` pale chest and belly, `M` muzzle (white on a tuxedo), `D` ears. This is how the rounded silhouettes are drawn (`SIT_BODY`, `STAND_BODY`, `CURL_BODY`, `LOAF_BODY`, `STRETCH_BODY`, and the window-watching cat), and the face-on head (`HEAD_FRONT`, drawn by `drawFaceHead` for the cat house, the box, the tunnel's peephole and looking at you). Prefer it to stacking `pxRect` boxes. |
-| `catHeadSide(c, cat, hx, hy, { eye, whiskers, flick, earUp })` | The side-on head (`HEAD_SIDE`): sloping forehead, muzzle, chin, ears, eye and nose, all placed for you. Use it for any side-on pose. |
+| `catHeadSide(c, cat, hx, hy, { eye, whiskers, flick, earUp, earsBack })` | The side-on head (`HEAD_SIDE`): sloping forehead, muzzle, chin, ears, eye and nose, all placed for you. Use it for any side-on pose. |
 | `catMapSwell(c, x, y, rows, cols, 'top' or 'back', from, to)` | Breathing for a `catMap` body: its outline swells half a pixel on a breath in. |
-| `catTail`, `catLeg`, `catShadow`, `eyeHD`, `closedEyeHD`, `noseHD`, `earHD`, `pawHD`, `breathHD` | Cat parts. Reuse them rather than drawing new ones. |
+| `catTail`, `catLeg`, `catArm`, `catShadow`, `eyeHD`, `closedEyeHD`, `noseHD`, `earHD`, `pawHD`, `breathHD` | Cat parts. Reuse them rather than drawing new ones. |
 
 Never call canvas paths (`arc`, `lineTo`, `drawImage`...) in cat drawing code: kittens are drawn through `smallCtx`, which only supports `save`, `restore`, `translate`, `scale`, `fillStyle`, `globalAlpha`, `beginPath`, `rect`, `clip` and `fillRect` (and the helpers above, which know about it).
 
@@ -110,7 +110,7 @@ The same goes for anything that comes and goes, like a breath or a blink: a fine
 
 ### Adding a pose
 
-1. A branch in `drawCatBody` (copy the nearest existing pose and change it). Draw the body as a `catMap` bitmap with a rounded silhouette and the head with `catHeadSide`, like sitting, standing, curled up, the loaf, kneading and stretching. (A few older poses are still built from boxes: lying on its back, the crouch, the leap, scratching up on the hind legs and the full gallop.)
+1. A branch in `drawCatBody` (copy the nearest existing pose and change it). Draw the body as a `catMap` bitmap with a rounded silhouette and the head with `catHeadSide`, like every existing pose (`SIT_BODY`, `STAND_BODY`, `CURL_BODY`, `LOAF_BODY`, `STRETCH_BODY`, `CROUCH_BODY`, `LEAP_BODY`, `GALLOP_BODY`, `UPRIGHT_BODY`, `BELLY_BODY`). Legs reaching up or out (a paw raised, paws in the air) are `catArm`.
 2. A route to it in `getPose()` (the state or activity that shows it).
 3. Its height in `bubbleAnchor()` if it isn't about 18 room pixels tall.
 4. Add it to `POSES` in `tests/pose_sheet.py`, and to `PREVIEW_POSES` if it suits the cat creator's preview.

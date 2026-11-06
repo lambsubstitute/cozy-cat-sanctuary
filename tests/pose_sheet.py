@@ -6,7 +6,8 @@ from PIL import Image
 
 html, out = sys.argv[1], sys.argv[2]
 POSES = sys.argv[3:] or ['sit_relax', 'look_at_you', 'grooming', 'walk', 'eating', 'play_yarn', 'window_watch', 'sleep_curl',
-                         'sleep_loaf', 'sleep_belly', 'kneading', 'crouch', 'leap', 'stretching', 'scratching', 'proud']
+                         'sleep_loaf', 'sleep_belly', 'kneading', 'crouch', 'leap', 'stretching', 'scratching', 'reach', 'toy_swat',
+                         'gallop', 'proud']
 HOUSE = [
     {"name": "Ginger", "coat": "ginger", "pattern": "tabby", "eyes": "green", "character": "playful", "voice": "mew", "age": "adult"},
     {"name": "Tux", "coat": "black", "pattern": "tuxedo", "eyes": "gold", "character": "lazy", "voice": "deep", "age": "adult"},
@@ -17,8 +18,9 @@ JS = """(pose) => {
   const out = [];
   cats.forEach((c, i) => {
     c.update = () => {}; c.updateDreams = () => {};
-    c.getPose = () => pose === 'walk' ? 'walking' : pose; c.isMoving = pose === 'walk'; c.animTick = 7;
-    Object.assign(c, { x: 60 + i * 50, y: 170, z: 0, surface: 'floor', nav: null, facing: 1, state: pose === 'walk' ? 'wander' : pose });
+    const moving = pose === 'walk' || pose === 'gallop';                   // (a gallop is a walk at full speed)
+    c.getPose = () => moving ? 'walking' : pose; c.isMoving = moving; c.animTick = 7; c.lastStep = pose === 'gallop' ? 1.3 : 0.5;
+    Object.assign(c, { x: 60 + i * 50, y: 170, z: 0, surface: 'floor', nav: null, facing: 1, state: moving ? 'wander' : pose });
     if (pose === 'walk') { c.isWalking = true; }
   });
   return true;
