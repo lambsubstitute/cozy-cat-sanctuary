@@ -7221,9 +7221,9 @@
         // and the others come running to look. Click a bird to shoo it away.
         // ------------------------------------------------------------------
         const BIRD_KINDS = [
-            { name: 'robin',    back: '#7a5535', breast: '#e2572b', cap: '#7a5535', wing: '#5e4029' },
-            { name: 'blue tit', back: '#7d9c5c', breast: '#f2d03b', cap: '#3b82c4', wing: '#4f78a8', cheek: '#f8fafc' },
-            { name: 'sparrow',  back: '#8b6a47', breast: '#d9c7a8', cap: '#7c6346', wing: '#5f4630' }
+            { name: 'robin',    back: '#7a5535', breast: '#e2572b', cap: '#7a5535', wing: '#5e4029', face: true, belly: '#efe6d6', beak: '#2a1a0c', bill: 1 },
+            { name: 'blue tit', back: '#7d9c5c', breast: '#f2d03b', cap: '#3b82c4', wing: '#4f78a8', cheek: '#f8fafc', stripe: '#1e3a5f', bar: '#e8eef4', beak: '#2a2a2a', bill: 0.75 },
+            { name: 'sparrow',  back: '#8b6a47', breast: '#d9c7a8', cap: '#8a8f94', wing: '#5f4630', bib: '#2e2620', cheek: '#e4dccb', streak: '#3a2a1a', beak: '#6e6258', bill: 1.2 }
         ];
         // Landing spots outside the glass: either end of the feeder's perch, or along the window bar
         const BIRD_PERCHES = [{ x: 102, y: 38 }, { x: 114, y: 38 }, { x: 96, y: 57 }, { x: 134, y: 57 }, { x: 147, y: 57 }];
@@ -7435,31 +7435,50 @@
                 ctx.restore();
                 return;
             }
-            ctx.translate(Math.round(b.x), Math.round(b.y) - (b.hop > 0 ? 1 : 0));
+            // round shapes (see fineDabs), lit from above, at half-pixel steps so the bird moves smoothly
+            const lift = b.hop > 0 ? Math.sin(b.hop / 6 * Math.PI) * 1.5 : 0;
+            ctx.translate(Math.round(b.x * 2) / 2, Math.round((b.y - lift) * 2) / 2);
             if (b.facing === -1) ctx.scale(-1, 1);
             const flying = b.phase !== 'perch';
-            const pk = b.peck > 0 && b.peck % 7 < 4 ? 1 : 0;  // head bobs down to peck
-            pxRect(ctx, -3, -4, 5, 3, k.back);                // body (feet at 0, 0)
-            pxRect(ctx, -6, -5, 3, 1, k.wing);                // tail
-            pxRect(ctx, -4, -4, 1, 1, k.wing);
-            pxRect(ctx, 0, -3, 2, 2, k.breast);               // breast
-            pxRect(ctx, -1, -2, 2, 1, k.breast);
-            pxRect(ctx, 0, -6 + pk, 3, 2, k.back);            // head
-            pxRect(ctx, 0, -6 + pk, 3, 1, k.cap);
-            if (k.cheek) pxRect(ctx, 1, -5 + pk, 1, 1, k.cheek);
-            pxRect(ctx, 2, -6 + pk, 1, 1, '#111827');         // eye
-            pxRect(ctx, 3, -5 + pk, 1, 1, '#3f2a14');         // beak
-            hd(ctx, 2, -6 + pk, 0.5, 0.5, '#ffffff');                                        // a bright eye
-            hd(ctx, 3.5, -5 + pk, 0.5, 0.5, '#6a4a2a'); hd(ctx, 3, -4.5 + pk, 1, 0.5, '#2a1a0c');   // a pointed beak
-            hd(ctx, -2.5, -3.5, 2.5, 0.5, shade(k.wing, -0.3));                             // feathers
-            hd(ctx, 0.5, -2.5, 0.5, 0.5, shade(k.breast, -0.2)); hd(ctx, 1, -1.5, 0.5, 0.5, shade(k.breast, -0.2));
-            if (flying) {
-                const up = Math.floor(b.t / 3) % 2;
-                pxRect(ctx, -2, up ? -7 : -2, 3, 2, k.wing);  // flapping
-            } else {
-                pxRect(ctx, -2, -4, 3, 1, k.wing);            // folded wing
-                pxRect(ctx, -1, -1, 1, 1, '#3f2a14');         // legs
-                pxRect(ctx, 1, -1, 1, 1, '#3f2a14');
+            const round = (c, r) => (dx, dy) => dy < -r * 0.45 ? shade(c, 0.14) : dy > r * 0.5 ? shade(c, -0.2) : c;
+            const dip = b.peck > 0 ? Math.sin((b.peck % 7) / 7 * Math.PI) : 0;    // head bobs down to peck
+            const hx = 2 + dip * 0.9, hy = -5.4 + dip * 1.8;
+            if (!flying) fineDabs(ctx, [[-0.6, -0.9, 0.3, '#6b4a3a'], [-0.6, -0.4, 0.3, '#6b4a3a'], [0.6, -0.9, 0.3, '#6b4a3a'], [0.6, -0.4, 0.3, '#6b4a3a'],   // thin legs
+                                        [-0.3, -0.1, 0.35, '#5a3a2a'], [0.9, -0.1, 0.35, '#5a3a2a']]);                                                  // toes on the perch
+            const flap = flying ? [-1, 0, 1, 0][Math.floor(b.t / 2) % 4] : 0;     // wings up, level, down, level
+            const tail = [];
+            for (let n = 0; n <= 5; n++) { const f = n / 5; tail.push([-2 - f * 4, -3.4 - f * (flying ? 0.6 : 1.4), 1.0 - f * 0.45, round(k.wing, 1)]); }
+            fineDabs(ctx, tail);
+            if (flying && flap < 0) {                                               // a raised wing goes behind the body
+                const w = [];
+                for (let n = 0; n <= 6; n++) { const f = n / 6; w.push([-0.4 - f * 2.2, -4.4 - f * 3.6, 1.2 - f * 0.6, round(k.wing, 1.2)]); }
+                fineDabs(ctx, w);
+            }
+            if (k.belly) fineDabs(ctx, [[-1.0, -1.7, 1.4, k.belly]]);
+            fineDabs(ctx, [[-0.8, -3.2, 2.3, round(k.back, 2.3)], [1.3, -3.0, 1.9, round(k.breast, 1.9)]]);   // plump body, breast
+            if (k.belly) fineDabs(ctx, [[-0.4, -1.3, 1.0, k.belly]]);
+            if (k.streak) fineDabs(ctx, [[1.4, -2.4, 0.3, shade(k.breast, -0.25)], [0.6, -1.8, 0.3, shade(k.breast, -0.25)], [1.8, -1.6, 0.3, shade(k.breast, -0.25)]]);
+            if (!flying) {                                                          // the wing, folded along the side
+                const w = [];
+                for (let n = 0; n <= 6; n++) { const f = n / 6; w.push([-0.4 - f * 2.8, -3.5 - f * 0.2, 1.2 - f * 0.45, round(k.wing, 1.2)]); }
+                fineDabs(ctx, w);
+                if (k.bar) hd(ctx, -2, -3.5, 1.5, 0.5, k.bar);                            // a pale wing bar
+                if (k.streak) { hd(ctx, -1, -3.5, 0.5, 0.5, k.streak); hd(ctx, -2, -4, 0.5, 0.5, k.streak); hd(ctx, -2.5, -3, 0.5, 0.5, k.streak); }
+            }
+            fineDabs(ctx, [[hx, hy, 1.7, round(k.back, 1.7)]]);                   // round head
+            if (k.face) fineDabs(ctx, [[hx + 0.6, hy + 0.7, 1.2, k.breast]]);     // a robin's red face
+            if (k.cap !== k.back) fineDabs(ctx, [[hx - 0.1, hy - 0.7, 1.25, round(k.cap, 1.25)]]);
+            if (k.stripe) fineDabs(ctx, [[hx + 0.2, hy + 0.1, 1.0, k.cheek], [hx + 1.0, hy - 0.2, 0.35, k.stripe], [hx - 0.4, hy + 0.1, 0.4, k.stripe],
+                                         [hx + 0.8, hy + 1.3, 0.5, k.stripe]]);                               // white cheek, dark eye stripe and chin
+            else if (k.cheek) fineDabs(ctx, [[hx + 0.1, hy + 0.5, 0.9, k.cheek]]);
+            if (k.bib) fineDabs(ctx, [[hx + 1.1, hy + 1.5, 0.55, k.bib], [hx + 0.8, hy + 2.1, 0.45, k.bib]]); // a sparrow's black bib
+            fineDabs(ctx, [[hx + 0.9, hy - 0.3, 0.45, '#111827'],                   // bright eye
+                           [hx + 1.5 + k.bill * 0.4, hy + 0.2, 0.45 * k.bill, k.beak], [hx + 1.6 + k.bill * 0.9, hy + 0.25, 0.28 * k.bill, k.beak]]);   // pointed beak
+            hd(ctx, hx + 0.5, hy - 1, 0.5, 0.5, '#ffffff');
+            if (flying && flap >= 0) {                                              // a wing level or swept down, in front of the body
+                const w = [];
+                for (let n = 0; n <= 6; n++) { const f = n / 6; w.push([-0.4 - f * (flap ? 1.6 : 3.4), -4 + f * (flap ? 3.4 : 0.4), 1.2 - f * 0.6, round(k.wing, 1.2)]); }
+                fineDabs(ctx, w);
             }
             ctx.restore();
         }
@@ -8527,13 +8546,27 @@
             });
         }
 
+        // Dusty little moths seen from above, wings beating: spread wide, half closed, folded together
         function drawMoths() {
-            moths.list.forEach(mo => {
-                const open = Math.floor((mo.t + mo.x) / 2) % 2;
-                pxRect(ctx, mo.x, mo.y, 1, 2, '#d8c9a3');
-                pxRect(ctx, mo.x - (open ? 2 : 1), mo.y + (open ? 0 : 1), open ? 2 : 1, 1, '#f5efe0');
-                pxRect(ctx, mo.x + 1, mo.y + (open ? 0 : 1), open ? 2 : 1, 1, '#f5efe0');
-            });
+            if (!moths.list.length) return;
+            spriteFX(ctx, 125, 80, () => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(88, 22, 74, 74);                     // on the far side of the glass
+                ctx.clip();
+                moths.list.forEach(mo => {
+                    const x = Math.round(mo.x * 2) / 2 + 0.5, y = Math.round(mo.y * 2) / 2;
+                    const s = [1, 0.6, 0.25, 0.6][Math.floor((mo.t + mo.x) / 2) % 4];
+                    const wing = '#e8dcc0', edge = '#b8a47e';
+                    for (const side of [-1, 1]) fineDabs(ctx, [
+                        [x + side * (0.3 + 0.6 * s), y + 1.3, 0.3 + 0.3 * s, edge],                                                                  // hindwing
+                        [x + side * (0.4 + 0.8 * s), y + 0.4, 0.4 + 0.45 * s, wing], [x + side * (0.6 + 1.1 * s), y + 0.1, 0.25 + 0.3 * s, wing],   // forewing
+                        [x + side * (0.5 + 1.0 * s), y + 0.5, 0.2, edge]]);                                                                           // a dusky spot
+                    fineDabs(ctx, [[x, y + 0.3, 0.45, '#8a7356'], [x, y + 0.9, 0.45, '#8a7356'], [x, y + 1.5, 0.35, '#7a6448']]);                    // furry body
+                    hd(ctx, x - 1, y - 0.5, 0.5, 0.5, '#8a7356'); hd(ctx, x + 0.5, y - 0.5, 0.5, 0.5, '#8a7356');                                    // feathery feelers
+                });
+                ctx.restore();
+            }, { outline: -0.6, round: false });
         }
 
         // ---- Shooting stars ----
@@ -8651,41 +8684,62 @@
             ctx.beginPath();
             ctx.rect(88, 22, 74, 74);
             ctx.clip();
-            ctx.translate(Math.round(f.x), 95);
+            ctx.translate(Math.round(f.x * 2) / 2, 95);
+            // round shapes (see fineDabs), lit from above
+            const round = (c, r) => (dx, dy) => dy < -r * 0.45 ? shade(c, 0.14) : dy > r * 0.5 ? shade(c, -0.2) : c;
+            const ear = (x, y, tx, ty) => {                                    // a big pointed ear, dark at the back
+                const d = [];
+                for (let n = 0; n <= 6; n++) { const q = n / 6; d.push([x + (tx - x) * q, y + (ty - y) * q, 1.15 - q * 0.85, deep]); }
+                fineDabs(ctx, d);
+            };
             if (f.phase === 'sit') {
                 // Sitting face-on, tail curled round the paws, eyes glowing
-                pxRect(ctx, -5, -2, 9, 2, fur);                     // tail wrapped round
-                pxRect(ctx, 3, -3, 2, 2, white);                    // white tail tip
-                pxRect(ctx, -3, -7, 6, 6, fur);                     // body
-                pxRect(ctx, -2, -6, 4, 5, white);                   // white chest
-                pxRect(ctx, -2, -1, 1, 1, sock);
-                pxRect(ctx, 1, -1, 1, 1, sock);
-                pxRect(ctx, -3, -12, 6, 5, fur);                    // head
-                pxRect(ctx, -4, -14, 2, 3, deep);                   // big ears
-                pxRect(ctx, 2, -14, 2, 3, deep);
-                pxRect(ctx, -2, -9, 4, 2, white);                   // white muzzle
-                pxRect(ctx, 0, -8, 1, 1, sock);                     // nose
-                const blink = f.t % 140 < 6;
-                if (!blink) {
-                    pxRect(ctx, -2, -11, 1, 1, eye);
-                    pxRect(ctx, 1, -11, 1, 1, eye);
+                ear(-1.8, -12.2, -2.9, -15); ear(2.8, -12.2, 3.9, -15);
+                fineDabs(ctx, [[-2.1, -13.1, 0.45, white], [3.1, -13.1, 0.45, white]]);                         // fluffy insides
+                fineDabs(ctx, [[0.5, -3.6, 3.5, round(fur, 3.5)], [0.5, -6.6, 2.6, fur],                       // a pear-shaped body
+                               [0.5, -5.6, 1.8, white], [0.5, -3.4, 1.6, white]]);                              // white chest
+                fineDabs(ctx, [[-0.9, -2.2, 0.75, sock], [-0.9, -1.2, 0.75, sock], [-0.8, -0.5, 0.8, sock],   // black socks
+                               [1.9, -2.2, 0.75, sock], [1.9, -1.2, 0.75, sock], [1.8, -0.5, 0.8, sock]]);
+                const tail = [];
+                for (let n = 0; n <= 14; n++) {                                // the brush wraps round in front of the paws
+                    const q = n / 14;
+                    tail.push([4.2 - q * 7.4, -1.3 + Math.sin(q * Math.PI) * 0.5 - (1 - q) * 1.4, 1.2 - Math.abs(q - 0.35) * 0.7, q > 0.8 ? white : round(fur, 1.1)]);
+                }
+                fineDabs(ctx, tail);
+                fineDabs(ctx, [[0.5, -10.3, 2.9, round(fur, 2.9)],                                           // head
+                               [-0.8, -9.0, 1.4, white], [1.8, -9.0, 1.4, white], [0.5, -8.6, 1.0, white]]);  // white cheeks and muzzle
+                fineDabs(ctx, [[0.5, -9.8, 0.75, fur], [0.5, -9.0, 0.6, fur], [0.5, -8.2, 0.5, sock]]);       // the bridge of the nose, and its black tip
+                if (f.t % 140 < 6) {                                           // a slow blink
+                    hd(ctx, -1.5, -10.5, 1, 0.5, deep); hd(ctx, 1.5, -10.5, 1, 0.5, deep);
+                } else {
+                    fineDabs(ctx, [[-0.9, -10.6, 0.6, eye], [1.9, -10.6, 0.6, eye]]);
+                    hd(ctx, -1, -11, 0.5, 0.5, '#ffffff'); hd(ctx, 2, -11, 0.5, 0.5, '#ffffff');
                 }
             } else {
-                // Trotting along the lawn
+                // Trotting along the lawn: a long low body, a brush of a tail, black socks
                 if (f.dir === -1) ctx.scale(-1, 1);
-                const step = Math.floor(f.t / 5) % 2;
-                pxRect(ctx, -9, -6, 5, 2, fur);                     // brush of a tail
-                pxRect(ctx, -11, -5, 2, 2, white);
-                pxRect(ctx, -4, -7, 9, 4, fur);                     // body
-                pxRect(ctx, -2, -4, 6, 1, white);
-                pxRect(ctx, -3 + step, -3, 1, 3, sock);             // legs
-                pxRect(ctx, 3 - step, -3, 1, 3, sock);
-                pxRect(ctx, 4, -10, 4, 4, fur);                     // head
-                pxRect(ctx, 4, -12, 1, 2, deep);                    // ears
-                pxRect(ctx, 6, -12, 1, 2, deep);
-                pxRect(ctx, 8, -8, 2, 2, fur);                      // pointy snout
-                pxRect(ctx, 7, -7, 2, 1, white);
-                pxRect(ctx, 6, -9, 1, 1, eye);
+                const ph = f.t * Math.PI * 2 / 20, bob = Math.abs(Math.sin(ph)) * 0.5;
+                const leg = (hx, off, near) => {                               // hip to paw, swinging, the paw lifted as it comes forward
+                    const sw = Math.sin(ph + off), px = hx + sw * 1.4, lift = Math.max(0, Math.cos(ph + off)) * 0.9;
+                    const up = near ? fur : shade(fur, -0.25), so = near ? sock : shade(sock, 0.1), d = [];
+                    for (let n = 0; n <= 8; n++) { const q = n / 8; d.push([hx + (px - hx) * q, -5 + bob + (5 - bob - lift) * q, 0.55 - q * 0.17, q < 0.6 ? up : so]); }
+                    fineDabs(ctx, d);
+                };
+                leg(-2.6, Math.PI, false); leg(3.4, 0, false);                 // far legs
+                const tail = [];
+                for (let n = 0; n <= 12; n++) {
+                    const q = n / 12;
+                    tail.push([-4.4 - q * 6.6, -6.6 + bob + q * 1.2 + Math.sin(ph * 0.5 + q * 2) * 0.4 * q, 0.8 + Math.sin(q * Math.PI * 0.85) * 0.75, q > 0.82 ? white : round(fur, 1.3)]);
+                }
+                fineDabs(ctx, tail);
+                const body = [];
+                for (let n = 0; n <= 10; n++) { const q = n / 10; body.push([-3.4 + q * 7, -6.1 - q * 0.4 + bob, 1.75 + Math.sin(q * Math.PI) * 0.15 + q * 0.2, round(fur, 1.9)]); }
+                fineDabs(ctx, body.concat([[4.5, -5.6 + bob, 1.0, white]]));                                       // a long body, white chest
+                leg(-2.2, 0, true); leg(3.8, Math.PI, true);                   // near legs
+                ear(5.4, -9.8 + bob, 5.0, -12.2 + bob); ear(6.6, -9.8 + bob, 6.6, -12.2 + bob);
+                fineDabs(ctx, [[6.0, -8.6 + bob, 2.0, round(fur, 2.0)], [8.1, -7.9 + bob, 1.2, fur], [9.3, -7.6 + bob, 0.7, fur],   // head, long snout
+                               [7.0, -7.0 + bob, 1.0, white], [8.6, -7.0 + bob, 0.55, white],                                              // white cheek and jaw
+                               [9.9, -7.7 + bob, 0.4, sock], [7.2, -9.0 + bob, 0.45, eye]]);                                             // nose, eye
             }
             ctx.restore();
         }
